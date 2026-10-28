@@ -16,6 +16,21 @@ This installs:
 - `config/live/agents/*.md` (56 agents) → `~/.config/opencode/agents/`
 - Worker binaries → `~/.local/bin/`
 
+## Setup Wizard (Menu-Driven)
+
+```bash
+python3 scripts/setup-wizard.py          # interactive menu
+python3 scripts/setup-wizard.py --non-interactive --validate         # validate only
+python3 scripts/setup-wizard.py --non-interactive --refresh-agents   # regenerate agents
+python3 scripts/setup-wizard.py --non-interactive --set-archive /path/to/archive  # set archive dir
+```
+
+The interactive wizard provides a menu to:
+- **Set Session Archive Directory** — defaults to `~/.local/share/session-archive/global-sessions/`
+- **Configure API Provider Keys** — add/edit NVIDIA, OpenRouter, Groq, Anthropic routes
+- **Validate Current Configuration** — checks V2 config, provider routes, chains
+- **Refresh Generated Agents** — regenerates 56 agents from `chains.json`
+
 ## Model Configuration (Required)
 
 **You must add your own API credentials.** The repo ships a sanitized example at `config/provider-routes.example.json`. Copy it and fill in your keys:
@@ -88,7 +103,7 @@ Files: `lib/cc-alerts.py` (sender), `lib/driver.py` (hooks into mastermind hando
 ## Archiver / GitHub
 
 - **Archiver agent** (`L.O.G.`) handles conventional commits, secret scanning, session logs, PR creation
-- **session-archive plugin** (`lib/session-archive.py`) auto-archives every session to a private git repo
+- **session-archive plugin** (`lib/session-archive.py`) auto-archives every session to a private git repo at `~/.local/share/session-archive/global-sessions/`
 - **GitHub CLI** (`gh`) used for PR creation — must be authenticated (`gh auth status`)
 
 No GitHub Actions/workflows in this repo; the archiver runs at commit time.
@@ -115,7 +130,8 @@ TBRN-OPENCODE/
 │   ├── ladder.py                  # Dry-run ladder + critic picker
 │   ├── validate-*                 # Route/pin/role validation
 │   ├── opencode-worker            # Legacy GO worker (not current router)
-│   └── probe-model                # Model probe utility
+│   ├── probe-model                # Model probe utility
+│   └── setup-wizard.py            # Interactive & non-interactive setup
 ├── lib/
 │   ├── health.py                  # Model health registry (cooldown)
 │   ├── log-rung.py                # Dispatch telemetry
