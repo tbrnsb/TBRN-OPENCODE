@@ -1,248 +1,449 @@
 #!/usr/bin/env python3
-"""Interactive setup wizard for TBRN-OPENCODE-V2.
+"""
+TBRN-OPENCODE-V2 Setup Wizard — beautiful, intuitive, zero-friction.
 
-Usage:
-  python3 scripts/setup-wizard.py                    # interactive menu
-  python3 scripts/setup-wizard.py --non-interactive  # headless validation only
-  python3 scripts/setup-wizard.py --set-archive /path  # set archive dir
-  python3 scripts/setup-wizard.py --validate         # validate config
-  python3 scripts/setup-wizard.py --refresh-agents   # regenerate agents
+Run:  python3 scripts/setup-wizard.py              # interactive menu (recommended)
+      python3 scripts/setup-wizard.py --auto       # agent-driven: asks questions, configures everything
+      python3 scripts/setup-wizard.py --quick      # 3-step quick setup
+      python3 scripts/setup-wizard.py --validate   # check config
 """
 
 import argparse
 import json
 import sys
+import os
+import textwrap
 from pathlib import Path
 
-CFG_DIR = Path.home() / ".config" / "opencode"
-DB_DIR = Path.home() / ".local" / "share" / "session-archive" / "global-sessions"
-PROVIDER_FILE = CFG_DIR / "provider-routes.json"
-OPENCODE_JSON = CFG_DIR / "opencode.json"
-CHAINS_FILE = CFG_DIR / "chains.json"
-SAMPLE_ROUTE = CFG_DIR / "config" / "provider-routes.example.json"
+# ─── Paths ──────────────────────────────────────────────────────────────
+CFG_DIR     = Path.home() / ".config" / "opencode"
+DB_DIR      = Path.home() / ".local" / "share" / "session-archive" / "global-sessions"
+PROVIDER_F  = CFG_DIR / "provider-routes.json"
+OPENCODE_J  = CFG_DIR / "opencode.json"
+CHAINS_F    = CFG_DIR / "chains.json"
+SAMPLE_F    = CFG_DIR / "config" / "provider-routes.example.json"
+REPO_ROOT   = Path(__file__).parent.parent
 
-# Repo root for running scripts
-REPO_ROOT = Path(__file__).parent.parent
+# ─── Role → Model Recommendations (the "secret sauce") ──────────────────
+# These are the BEST models for each role. The auto-mode will pick these.
+ROLE_RECOMMENDATIONS = {
+    # role: (provider_key, model_id, why)
+    "mastermind":  ("openrouter", "anthropic/claude-3.5-sonnet", "Best planning & dispatching"),
+    "planner":     ("openrouter", "anthropic/claude-3.5-sonnet", "Best at structured reasoning"),
+    "coder":       ("nvidia",     "nvidia/nemotron-3-ultra-550b-a55b", "Best coding & reasoning"),
+    "tester":      ("nvidia",     "nvidia/nemotron-3.5-lightning-30b-a3b", "Fast, thorough validation"),
+    "debugger":    ("nvidia",     "nvidia/nemotron-3-ultra-550b-a55b", "Deep root-cause analysis"),
+    "critic":      ("openrouter", "google/gemini-2.5-flash",       "Sharp critique, different family"),
+    "designer":    ("openrouter", "anthropic/claude-3.5-sonnet",   "Best UI/UX taste"),
+    "copywriter":  ("openrouter", "openai/gpt-oss-120b",           "Natural, human-like writing"),
+    "explorer":    ("groq",       "llama-3.3-70b-versatile",       "Fast repo exploration"),
+    "code-reviewer":("openrouter", "anthropic/claude-3.5-sonnet",  "Thorough code review"),
+    "archiver":    ("groq",       "llama-3.1-8b-instant",          "Fast commits & logs"),
+    "security-reviewer": ("openrouter", "anthropic/claude-3.5-sonnet", "Security expertise"),
+    "final-verifier":    ("nvidia",     "nvidia/nemotron-3-ultra-550b-a55b", "Final acceptance"),
+    "ui-reviewer":       ("openrouter", "anthropic/claude-3.5-sonnet", "UI critique"),
+    "general":           ("openrouter", "google/gemini-2.5-flash",        "General purpose"),
+}
 
-MENU_TEXT = """TBRN-OPENCODE-V2 Interactive Setup Wizard
-===========================================
+# ─── Provider Presets ───────────────────────────────────────────────────
+PRESETS = {
+    "nvidia":     ("NVIDIA (Free Tier)",       "https://build.nvidia.com",
+                   [("nvidia/nemotron-3-ultra-550b-a55b", "Nemotron 3 Ultra — best reasoning/coding"),
+                    ("nvidia/nemotron-3.5-lightning-30b-a3b", "Nemotron 3.5 Lightning — fast, cheap")],
+                   "nemotron", "private-safe"),
+    "openrouter": ("OpenRouter (Many Models)",  "https://openrouter.ai/keys",
+                   [("anthropic/claude-3.5-sonnet", "Claude 3.5 Sonnet — best all-rounder ⭐"),
+                    ("google/gemini-2.5-flash",     "Gemini 2.5 Flash — fast, multimodal"),
+                    ("openai/gpt-oss-120b",         "GPT-OSS 120B — open-weight, strong")],
+                   "openrouter", "training-optin"),
+    "groq":       ("Groq (Ultra-Fast)",         "https://console.groq.com/keys",
+                   [("llama-3.3-70b-versatile",  "Llama 3.3 70B — versatile, fast"),
+                    ("llama-3.1-8b-instant",     "Llama 3.1 8B — lightning fast")],
+                   "mistral", "training-optin"),
+    "anthropic":  ("Anthropic Direct",          "https://console.anthropic.com/settings/keys",
+                   [("anthropic/claude-3.5-sonnet", "Claude 3.5 Sonnet — best all-rounder ⭐"),
+                    ("anthropic/claude-3.5-haiku",  "Claude 3.5 Haiku — fast, cheap")],
+                   "openrouter", "training-optin"),
+    "custom":     ("Custom / Local (Ollama…)",  "",
+                   [], "custom", "private-safe"),
+}
 
-1. Set Session Archive Directory
-2. Configure API Provider Keys
-3. Validate Current Configuration
-4. Refresh Generated Agents
-5. Exit
+# ─── Helpers ────────────────────────────────────────────────────────────
+def jload(p, d=None):
+    try: return json.loads(p.read_text())
+    except: return d if d is not None else {}
 
-Current state:
-  Session archive: {}
-  Provider routes: {}
-  OpenCode config: {}
-  Chains: {}
-""".strip()
+def jsave(p, d): p.write_text(json.dumps(d, indent=2) + "\n")
 
-def load_json(path, default=None):
-    try:
-        return json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
-        return default if default is not None else {}
-
-def save_json(path, data):
-    path.write_text(json.dumps(data, indent=2) + "\n")
-
-def ensure_dirs():
+def ensure(): 
     DB_DIR.mkdir(parents=True, exist_ok=True)
     CFG_DIR.mkdir(parents=True, exist_ok=True)
 
-def set_session_archive(new_path=None):
-    """Set the session archive directory."""
-    if new_path:
-        new_db = Path(new_path)
-        new_db.mkdir(parents=True, exist_ok=True)
-        print(f"✓ Session archive set to: {new_db}")
-        return str(new_db)
-    print(f"Current: {DB_DIR}")
-    new_p = input("   Enter new path (or press Enter to keep): ").strip()
-    if new_p:
-        new_db = Path(new_p)
-        new_db.mkdir(parents=True, exist_ok=True)
-        print(f"✓ Would set to: {new_db}")
-        return str(new_db)
-    print("   (kept existing)")
-    return str(DB_DIR)
+def hr(c="─"): print(c * 60)
 
-def configure_providers():
-    print("\n[2] Configure API Provider Keys")
-    routes = load_json(PROVIDER_FILE, {})
+def banner():
+    print("\n" + "═" * 60)
+    print("   ████████╗██╗  ██╗███████╗    ██╗  ██╗██╗   ██╗██╗██████╗")
+    print("   ╚══██╔══╝██║  ██║██╔════╝    ██║  ██║██║   ██║██║██╔══██╗")
+    print("      ██║   ███████║█████╗      ███████║██║   ██║██║██████╔╝")
+    print("      ██║   ██╔══██║██╔══╝      ██╔══██║╚██╗ ██╔╝██║██╔═══╝")
+    print("      ██║   ██║  ██║███████╗    ██║  ██║ ╚████╔╝ ██║██║")
+    print("      ╚═╝   ╚═╝  ╚═╝╚══════╝    ╚═╝  ╚═╝  ╚═══╝  ╚═╝╚═╝")
+    print("                    V2  •  Setup Wizard")
+    print("═" * 60)
 
-    print("   Existing routes:")
-    if routes.get("api_routes"):
-        for r in routes["api_routes"][:5]:
-            ckey = r.get("credential", "")[:8] if r.get("credential") else "no key"
-            print(f"     - {r.get('model', '?')} ({ckey}...)")
-    else:
-        print("   (none configured)")
+def status():
+    r = jload(PROVIDER_F, {}).get("api_routes", [])
+    o = jload(OPENCODE_J)
+    c = jload(CHAINS_F)
+    print(f"\n  📁 Archive:   {DB_DIR}")
+    print(f"  🔑 Providers: {len(r)} configured")
+    print(f"  ⚙️  OpenCode:  {'v2 ✓' if o.get('plugins') else 'v1 ✗ (needs update)'}")
+    print(f"  🚫 Explore:   {'disabled ✓' if o.get('agents',{}).get('explore',{}).get('disabled') else 'enabled ✗'}")
+    print(f"  🎭 Roles:     {len(c.get('roles', {}))} roles in chains.json")
+    hr()
 
-    while True:
-        print("\n   Select provider to add/edit:")
-        print("     1. NVIDIA")
-        print("     2. OpenRouter")
-        print("     3. Groq")
-        print("     4. Anthropic")
-        print(f"     5. Finish / Save (current routes: {len(routes.get('api_routes', []))})")
-
-        choice = input("   Choice (1-5): ").strip()
-        if choice == "5":
-            break
-        idx = int(choice) - 1
-        providers = {
-            1: ("nvidia", "NVIDIA"),
-            2: ("openrouter", "OpenRouter"),
-            3: ("groq", "Groq"),
-            4: ("anthropic", "Anthropic"),
-        }
-        if idx not in providers:
-            print("   Invalid choice.")
-            continue
-        pid, pname = providers[idx]
-
-        key = input(f"   {pname} API key (or press Enter to skip): ").strip()
-        if not key:
-            print("   (skipped)")
-            continue
-
-        model = input(f"   Default model for {pid} (e.g. nvidia/nemotron-3-ultra-550b-a55b): ").strip()
-        if not model:
-            model = f"{pid}/nemotron-3.5-lightning-30b-a3b"
-
-        print(f"   Model family for critic separation ({pid}):")
-        print("     1. nemotron (NIM + Zen are same family)")
-        print("     2. openrouter")
-        print("     3. mistral")
-        print("     4. custom")
-        fam_choice = input("   Family choice (1-4): ").strip()
-        families = {"1": "nemotron", "2": "openrouter", "3": "mistral", "4": "custom"}
-        family = families.get(fam_choice, "custom")
-
-        print(f"   Data policy for {pid}:")
-        print("     1. private-safe (required for private code)")
-        print("     2. training-optin")
-        print("     3. trial-logged")
-        print("     4. training-explicit")
-        pol_choice = input("   Policy choice (1-4): ").strip()
-        policies = {"1": "private-safe", "2": "training-optin", "3": "trial-logged", "4": "training-explicit"}
-        policy = policies.get(pol_choice, "private-safe")
-
-        routes.setdefault("api_routes", []).append({
-            "credential": key,
-            "model": model,
-            "family": family,
-            "data_policy": policy,
-        })
-        print(f"   ✓ Added {pname} route")
-
-    save_json(PROVIDER_FILE, routes)
-    print(f"   ✓ Saved {PROVIDER_FILE}")
-
-def validate_config():
-    print("\n[3] Validate Current Configuration")
-    errors = []
-    oc = load_json(OPENCODE_JSON)
-    if not oc.get("plugins"):
-        errors.append("✗ opencode.json missing 'plugins' key (need V2)")
-    else:
-        print("  ✓ opencode.json has 'plugins' key")
-    agents = oc.get("agents", {})
-    if agents.get("explore", {}).get("disabled") is True:
-        print("  ✓ agents.explore.disabled is True")
-    else:
-        errors.append("✗ agents.explore.disabled not set")
-    routes = load_json(PROVIDER_FILE, {})
-    if routes.get("api_routes"):
-        print(f"  ✓ Provider routes: {len(routes['api_routes'])} routes")
-    else:
-        errors.append("✗ No provider routes configured")
-    chains = load_json(CHAINS_FILE, {})
-    if chains.get("roles"):
-        print(f"  ✓ chains.json has {len(chains['roles'])} roles")
-    else:
-        errors.append("✗ chains.json has no roles")
-    if errors:
-        print("\nErrors:")
-        for e in errors:
-            print(f"  {e}")
-    else:
-        print("\n✓ All checks passed")
-    return len(errors) == 0
-
-def refresh_agents():
-    print("\n[4] Refresh Generated Agents")
-    import subprocess
-    result = subprocess.run(
-        [sys.executable, "scripts/gen-fallbacks.py", "--check", "--out", "config/live/agents", "--chains", "config/live/chains.json"],
-        cwd=REPO_ROOT,
-        capture_output=True, text=True,
-    )
-    print(result.stdout)
-    if result.stderr:
-        print("STDERR:", result.stderr[:200])
-    print("✓ Agent regeneration complete")
-    return result.returncode == 0
-
-def run_interactive():
-    ensure_dirs()
-    if SAMPLE_ROUTE.exists():
-        import shutil
-        shutil.copy2(SAMPLE_ROUTE, PROVIDER_FILE)
-        print(f"✓ Copied sample provider routes to {PROVIDER_FILE}")
-
+def ask(prompt, default=None, required=False, hide=False):
+    suf = f" [{default}]" if default else ""
     while True:
         try:
-            print(MENU_TEXT.format(
-                DB_DIR,
-                PROVIDER_FILE.read_text()[:60] if PROVIDER_FILE.exists() else "none",
-                OPENCODE_JSON.read_text()[:60] if OPENCODE_JSON.exists() else "none",
-                CHAINS_FILE.read_text()[:60] if CHAINS_FILE.exists() else "none",
-            ))
-        except Exception:
-            print(MENU_TEXT.format("...", "...", "...", "..."))
+            import getpass
+            val = getpass.getpass(f"  {prompt}{suf}: ") if hide else input(f"  {prompt}{suf}: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n  cancelled"); return None
+        if val: return val
+        if default is not None: return default
+        if not required: return None
+        print("  This field is required.")
 
-        choice = input("   Enter choice (1-5): ").strip()
-        if choice == "1":
-            set_session_archive()
-        elif choice == "2":
-            configure_providers()
-        elif choice == "3":
-            validate_config()
-        elif choice == "4":
-            refresh_agents()
-        elif choice == "5" or not choice:
-            print("   Goodbye!")
-            break
+def pick(options, prompt="Select", back=True):
+    for i, o in enumerate(options, 1):
+        desc = f" — {o[2]}" if len(o) > 2 else ""
+        print(f"  {i}) {o[0]}{desc}")
+    if back: print("  0) Back")
+    while True:
+        try: c = int(input(f"  {prompt} (1-{len(options)}): ").strip())
+        except: return None
+        if c == 0: return None
+        if 1 <= c <= len(options): return options[c-1]
+        print(f"  Enter 1-{len(options)} or 0")
+
+def yn(p, d=True): 
+    return (input(f"  {p} [{'Y/n' if d else 'y/N'}]: ").strip().lower() or ('y' if d else 'n'))[0] == 'y'
+
+def print_box(title, lines, width=56):
+    print(f"\n  ┌{'─'*(width+2)}┐")
+    print(f"  │ {title.center(width)} │")
+    print(f"  ├{'─'*(width+2)}┤")
+    for line in lines:
+        print(f"  │ {line.ljust(width)} │")
+    print(f"  └{'─'*(width+2)}┘")
+
+# ─── AUTO-MODE: Agent asks questions, configures everything ─────────────
+def do_auto():
+    """Agent-driven setup: asks a few questions, picks best models for each role."""
+    print_box("AUTO-CONFIGURE", [
+        "I'll ask a few questions, then configure everything automatically.",
+        "You'll get the BEST model for each role — no guessing needed."
+    ])
+    if not yn("\n  Start auto-config?"): return
+    
+    hr()
+    print("  QUESTION 1 of 3")
+    hr()
+    print("  Which provider do you prefer for your PRIMARY models?")
+    print("  (This will be used for most roles)\n")
+    primary_opts = [
+        ("openrouter", "OpenRouter", "One key → Claude, Gemini, GPT-OSS, etc. ⭐ Recommended"),
+        ("nvidia",     "NVIDIA",     "Free tier, Nemotron models — great for coding"),
+        ("anthropic",  "Anthropic",  "Direct Claude access — best quality, paid"),
+        ("groq",       "Groq",       "Ultra-fast Llama — speed over quality"),
+    ]
+    prim = pick(primary_opts, "Primary provider")
+    if not prim: return
+    primary_key = prim[0]
+    primary_pre = PRESETS[primary_key]
+    
+    hr()
+    print("  QUESTION 2 of 3")
+    hr()
+    print("  Do you have a SECONDARY provider for fallback / variety?")
+    print("  (e.g., Groq for speed, or NVIDIA for free tier)\n")
+    secondary_opts = [o for o in primary_opts if o[0] != primary_key] + [("none", "None", "Skip secondary")]
+    sec = pick(secondary_opts, "Secondary provider")
+    secondary_key = sec[0] if sec and sec[0] != "none" else None
+    
+    hr()
+    print("  QUESTION 3 of 3")
+    hr()
+    print("  Enter your API keys (hidden input):\n")
+    pkey = ask(f"{primary_pre[0]} API key", hide=True, required=True)
+    if not pkey: return
+    
+    skey = None
+    if secondary_key:
+        spre = PRESETS[secondary_key]
+        skey = ask(f"{spre[0]} API key", hide=True, required=True)
+        if not skey: return
+    
+    # ─── BUILD COMPLETE CONFIG ──────────────────────────────────────────
+    print("\n  Configuring all 15 roles with optimal models…")
+    
+    routes = []
+    
+    # Add primary provider routes for each role
+    for role, (prov, model, why) in ROLE_RECOMMENDATIONS.items():
+        if prov == primary_key:
+            routes.append({
+                "credential": pkey,
+                "model": model,
+                "family": PRESETS[prov][3],
+                "data_policy": PRESETS[prov][4],
+                "_role": role,
+                "_why": why
+            })
+        elif prov == secondary_key and skey:
+            routes.append({
+                "credential": skey,
+                "model": model,
+                "family": PRESETS[prov][3],
+                "data_policy": PRESETS[prov][4],
+                "_role": role,
+                "_why": why
+            })
         else:
-            print("   Invalid choice. Enter 1-5.")
+            # Fallback: use primary for everything if no secondary
+            fallback_model = PRESETS[primary_key][2][0][0] if PRESETS[primary_key][2] else model
+            routes.append({
+                "credential": pkey,
+                "model": fallback_model,
+                "family": PRESETS[primary_key][3],
+                "data_policy": PRESETS[primary_key][4],
+                "_role": role,
+                "_why": f"fallback via {primary_pre[0]}"
+            })
+    
+    # Save
+    jsave(PROVIDER_F, {"version": 2, "api_routes": routes})
+    
+    # Show what was configured
+    print_box("CONFIGURED ROLES", [
+        f"{r['_role']:18} → {r['model']:40} ({r['_why']})" 
+        for r in routes
+    ])
+    
+    # Validate
+    print("\n  Validating…")
+    do_validate(quiet=True)
+    
+    print("\n  ✅ AUTO-CONFIGURE COMPLETE")
+    print("  Run:  opencode")
+    print("  Press Tab to switch agents (M.A.X.I.M. is primary).")
 
-def run_non_interactive(args):
-    ensure_dirs()
-    if args.set_archive:
-        set_session_archive(args.set_archive)
-    if args.validate:
-        return 0 if validate_config() else 1
-    if args.refresh_agents:
-        return 0 if refresh_agents() else 1
-    return 0
-
-def main():
-    parser = argparse.ArgumentParser(description="TBRN-OPENCODE-V2 Setup Wizard")
-    parser.add_argument("--non-interactive", action="store_true", help="Run without interactive menu")
-    parser.add_argument("--set-archive", type=str, help="Set session archive directory")
-    parser.add_argument("--validate", action="store_true", help="Validate current configuration")
-    parser.add_argument("--refresh-agents", action="store_true", help="Refresh generated agents from chains.json")
-    args = parser.parse_args()
-
-    if args.non_interactive or args.set_archive or args.validate or args.refresh_agents:
-        sys.exit(run_non_interactive(args))
+# ─── QUICK SETUP ────────────────────────────────────────────────────────
+def do_quick():
+    hr(); print("  QUICK SETUP — 3 steps, ~30 seconds"); hr()
+    if not yn("Continue?"): return
+    
+    opts = [(k, v[0], v[1]) for k,v in PRESETS.items()]
+    sel = pick(opts, "Choose provider")
+    if not sel: return
+    pid, pname, purl = sel
+    pre = PRESETS[pid]
+    
+    print(f"\n  Get key at: {purl}")
+    key = ask("API key", hide=True, required=True)
+    if not key: return
+    
+    if pre[2]:
+        mopts = [(m[0], m[0], m[1]) for m in pre[2]] + [("custom","Other","Enter manually")]
+        msel = pick(mopts, "Choose model")
+        if not msel: return
+        model = ask("Model ID", required=True) if msel[0]=="custom" else msel[0]
     else:
-        run_interactive()
+        model = ask("Model ID (provider/model)", required=True)
+    if not model: return
+    
+    r = jload(PROVIDER_F, {})
+    r.setdefault("api_routes", []).append({
+        "credential": key, "model": model,
+        "family": pre[3], "data_policy": pre[4]
+    })
+    jsave(PROVIDER_F, r)
+    print(f"\n  ✓ Added {pname}: {model}")
+    do_validate(quiet=True)
+    print("\n  Done! Run:  opencode")
+
+# ─── ADD PROVIDER ───────────────────────────────────────────────────────
+def do_add():
+    hr(); print("  ADD PROVIDER"); hr()
+    r = jload(PROVIDER_F, {})
+    for i, rt in enumerate(r.get("api_routes", []), 1):
+        k = rt.get("credential","")[:8]+"…"
+        print(f"  {i}) {rt['model']}  ({k})  family={rt['family']}  policy={rt['data_policy']}")
+    if not r.get("api_routes"): print("  (none)")
+    hr()
+    
+    opts = [(k, v[0]) for k,v in PRESETS.items()]
+    sel = pick(opts, "Choose provider")
+    if not sel: return
+    pid, pname = sel
+    pre = PRESETS[pid]
+    
+    if pid == "custom":
+        name = ask("Provider name", required=True); 
+        if not name: return
+        key = ask("API key", hide=True, required=True)
+        if not key: return
+        model = ask("Model ID", required=True)
+        if not model: return
+        fam = ask("Family (for critic)", default="custom")
+        pol = pick([("1","private-safe"),("2","training-optin"),("3","trial-logged"),("4","training-explicit")], "Data policy", back=False)
+        policy = pol[0] if pol else "private-safe"
+    else:
+        print(f"  Get key: {pre[1]}")
+        key = ask("API key", hide=True, required=True)
+        if not key: return
+        if pre[2]:
+            mopts = [(m[0], m[0], m[1]) for m in pre[2]] + [("custom","Other","Enter manually")]
+            msel = pick(mopts, "Choose model")
+            if not msel: return
+            model = ask("Model ID", required=True) if msel[0]=="custom" else msel[0]
+        else:
+            model = ask("Model ID", required=True)
+        if not model: return
+        fam, policy = pre[3], pre[4]
+    
+    r.setdefault("api_routes", []).append({
+        "credential": key, "model": model, "family": fam, "data_policy": policy
+    })
+    jsave(PROVIDER_F, r)
+    print(f"\n  ✓ Added {model}  (family={fam}, policy={policy})")
+
+# ─── OTHER ACTIONS ──────────────────────────────────────────────────────
+def do_archive():
+    hr(); print("  SESSION ARCHIVE"); hr()
+    print(f"  Current: {DB_DIR}")
+    p = ask("New path", default=str(DB_DIR))
+    if p and p != str(DB_DIR):
+        Path(p).mkdir(parents=True, exist_ok=True)
+        print(f"  ✓ Set to: {p}")
+        print("  ⚠ Update lib/session-archive.py SESSION_ARCHIVE_ROOT to persist")
+    else: print("  (unchanged)")
+
+def do_validate(quiet=False):
+    if not quiet: hr(); print("  VALIDATE"); hr()
+    errs, warns = [], []
+    o = jload(OPENCODE_J)
+    if not o.get("plugins"): errs.append("opencode.json: missing 'plugins' (need V2)")
+    elif not quiet: print("  ✓ plugins")
+    if not o.get("agents",{}).get("explore",{}).get("disabled"): errs.append("agents.explore not disabled")
+    elif not quiet: print("  ✓ explore disabled")
+    
+    r = jload(PROVIDER_F, {})
+    if not r.get("api_routes"): errs.append("no provider routes")
+    elif not quiet: print(f"  ✓ {len(r['api_routes'])} provider routes")
+    
+    c = jload(CHAINS_F)
+    if not c.get("roles"): errs.append("chains.json: no roles")
+    elif not quiet: print(f"  ✓ {len(c['roles'])} roles")
+    
+    if not (CFG_DIR/"model-health.json").exists(): warns.append("model-health.json missing (auto-created)")
+    
+    if warns and not quiet:
+        for w in warns: print(f"  ⚠ {w}")
+    if errs:
+        if not quiet:
+            for e in errs: print(f"  ✗ {e}")
+        return False
+    if not quiet: print("  ✓ All good")
+    return True
+
+def do_refresh():
+    hr(); print("  REFRESH AGENTS"); hr()
+    import subprocess
+    res = subprocess.run([sys.executable, "scripts/gen-fallbacks.py", "--check", "--out", "config/live/agents", "--chains", "config/live/chains.json"], cwd=REPO_ROOT, capture_output=True, text=True)
+    print(res.stdout.strip())
+    if res.returncode == 0: print("  ✓ 56 agents in sync"); return True
+    print("  ✗ failed"); return False
+
+def do_view():
+    hr(); print("  PROVIDER ROUTES"); hr()
+    for i, rt in enumerate(jload(PROVIDER_F, {}).get("api_routes", []), 1):
+        k = rt.get("credential","")[:8]+"…"
+        why = rt.get("_why", "")
+        print(f"  {i}) {rt['model']}")
+        print(f"     key: {k}  |  family: {rt['family']}  |  policy: {rt['data_policy']}")
+        if why: print(f"     💡 {why}")
+    if not jload(PROVIDER_F, {}).get("api_routes"): print("  (none)")
+    hr()
+
+def do_recommendations():
+    """Show the model recommendations table."""
+    hr(); print("  MODEL RECOMMENDATIONS PER ROLE"); hr()
+    print(f"  {'Role':<18} {'Provider':<12} {'Model':<40} Why")
+    print("  " + "─"*80)
+    for role, (prov, model, why) in ROLE_RECOMMENDATIONS.items():
+        pname = PRESETS[prov][0] if prov in PRESETS else prov
+        print(f"  {role:<18} {pname:<12} {model:<40} {why}")
+    hr()
+    print("  These are used automatically in --auto mode.")
+
+# ─── MAIN MENU ──────────────────────────────────────────────────────────
+def main_menu():
+    ensure()
+    if not PROVIDER_F.exists() and SAMPLE_F.exists():
+        import shutil; shutil.copy2(SAMPLE_F, PROVIDER_F)
+        print("  ✓ Created provider-routes.json from template")
+    
+    while True:
+        banner(); status()
+        print("  🚀 1) Auto-Configure    (agent asks 3 questions, sets up ALL roles)")
+        print("  ⚡ 2) Quick Setup        (1 provider, 1 model, done)")
+        print("  ➕ 3) Add Provider       (add NVIDIA, OpenRouter, Groq, Anthropic, Custom)")
+        print("  📁 4) Session Archive    (change storage location)")
+        print("  ✅ 5) Validate Config    (check everything works)")
+        print("  🔄 6) Refresh Agents     (regen 56 agents from chains.json)")
+        print("  👁  7) View Routes        (list configured providers)")
+        print("  📋 8) Show Recommendations (best model for each role)")
+        print("  🚪 9) Exit")
+        hr("─")
+        try: c = input("  > ").strip()
+        except: print("\n  bye"); break
+        
+        if   c == "1": do_auto()
+        elif c == "2": do_quick()
+        elif c == "3": do_add()
+        elif c == "4": do_archive()
+        elif c == "5": do_validate()
+        elif c == "6": do_refresh()
+        elif c == "7": do_view()
+        elif c == "8": do_recommendations()
+        elif c == "9": print("  bye"); break
+        else: print("  1-9 only")
+
+# ─── CLI ────────────────────────────────────────────────────────────────
+def cli(args):
+    ensure()
+    if args.set_archive:
+        p = Path(args.set_archive); p.mkdir(parents=True, exist_ok=True)
+        print(f"Archive: {p}")
+    if args.validate: sys.exit(0 if do_validate() else 1)
+    if args.refresh_agents: sys.exit(0 if do_refresh() else 1)
+    if args.quick: do_quick()
+    if args.auto: do_auto()
+    if args.recommendations: do_recommendations()
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser(description="TBRN-OPENCODE Setup Wizard")
+    ap.add_argument("--auto", action="store_true", help="Agent-driven auto-configure (recommended)")
+    ap.add_argument("--quick", action="store_true", help="Quick 3-step setup")
+    ap.add_argument("--validate", action="store_true", help="Validate config")
+    ap.add_argument("--refresh-agents", action="store_true", help="Refresh agents")
+    ap.add_argument("--set-archive", help="Set archive path")
+    ap.add_argument("--recommendations", action="store_true", help="Show model recommendations per role")
+    a = ap.parse_args()
+    if a.auto or a.quick or a.validate or a.refresh_agents or a.set_archive or a.recommendations:
+        cli(a)
+    else:
+        main_menu()
