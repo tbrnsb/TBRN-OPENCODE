@@ -1,0 +1,29 @@
+# OpenCode state and runtime
+.opencode/
+.orchestrator/
+*.jsonl
+model-health.json
+rung-log.jsonl
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets (never commit)
+*.key
+*.pem
+.env
+.env.local

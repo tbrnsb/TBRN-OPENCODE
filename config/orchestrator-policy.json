@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "_comment": "GLOBAL SAFETY CEILING. This file is the trust anchor: it lives in the global OpenCode config, not in any project. A project's .orchestrator/policy.json can only NARROW this. It can never raise it. lib/policy.py enforces that arithmetically via effective = min(ceiling, project_class).",
+
+  "safety_ceiling": "trial-logged",
+  "_ceiling_rationale": "Permits trial/limited-time endpoints for public and disposable workloads, which is what makes free models usable for testing orchestration mechanics. Forbids training-explicit entirely, so no project can opt into a model that trains on its prompts.",
+
+  "default_project_class": "private",
+  "_default_rationale": "Absent an explicit project declaration, assume the stricter class. A missing or unreadable project file must never loosen protection, so the default is 'private' rather than 'disposable'.",
+
+  "project_classes": {
+    "private": {
+      "rank": 0,
+      "allows": ["private-safe"],
+      "use_for": "Any repository that is not public, or that contains code, credentials, customer data, or personal data."
+    },
+    "public": {
+      "rank": 2,
+      "allows": ["private-safe", "training-optin", "trial-logged"],
+      "use_for": "Code that is already public and contains nothing sensitive."
+    },
+    "disposable": {
+      "rank": 3,
+      "allows": ["private-safe", "training-optin", "trial-logged", "training-explicit"],
+      "use_for": "Synthetic fixtures and throwaway sandboxes only. Still bounded by safety_ceiling above."
+    }
+  },
+
+  "enforcement": {
+    "route_missing_data_policy": "treated as training-explicit (least safe)",
+    "route_missing_from_api_routes": "excluded",
+    "no_permitted_route": "fail closed; the worker exits 3 rather than selecting an ineligible route",
+    "unparsable_project_policy": "ignored; the global ceiling and default class apply",
+    "unknown_policy_label": "treated as training-explicit"
+  }
+}

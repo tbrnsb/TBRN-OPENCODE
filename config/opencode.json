@@ -1,0 +1,90 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [
+    "superpowers@git+https://github.com/obra/superpowers.git#v7.0.1"
+  ],
+  "model": "opencode/mimo-v2.6-flash-free",
+  "provider": {
+    "nvidia": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "NVIDIA route [nvidia]",
+      "options": {
+        "baseURL": "https://integrate.api.nvidia.com/v1",
+        "timeout": 120000,
+        "chunkTimeout": 45000
+      },
+      "models": {
+        "poolside/laguna-xs-2.1": {
+          "name": "poolside/laguna-xs-2.1 [nvidia]"
+        }
+      }
+    },
+    "openrouter": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "OPENROUTER route [openrouter]",
+      "options": {
+        "baseURL": "https://openrouter.ai/api/v1",
+        "timeout": 120000,
+        "chunkTimeout": 45000
+      },
+      "models": {
+        "openai/gpt-oss-120b": {
+          "name": "openai/gpt-oss-120b [openrouter]"
+        }
+      }
+    },
+    "groq": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "GROQ route [groq]",
+      "options": {
+        "baseURL": "https://api.groq.com/openai/v1",
+        "timeout": 120000,
+        "chunkTimeout": 45000
+      },
+      "models": {
+        "qwen/qwen3.8-27b": {
+          "name": "qwen3.8-27b [groq]"
+        }
+      }
+    },
+    "mistral": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "MISTRAL route [mistral]",
+      "options": {
+        "baseURL": "https://api.mistral.ai/v1",
+        "timeout": 120000,
+        "chunkTimeout": 45000
+      },
+      "models": {
+        "codestral-latest": {
+          "name": "codestral-latest [mistral]"
+        },
+        "mistral-large-latest": {
+          "name": "mistral-large-latest [mistral]"
+        }
+      }
+    },
+    "nvidia_secondary": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "nvidia secondary",
+      "options": {
+        "baseURL": "https://integrate.api.nvidia.com/v1",
+        "timeout": 300000,
+        "chunkTimeout": 120000
+      },
+      "models": {
+        "poolside/laguna-xs-2.1": {
+          "name": "poolside/laguna-xs-2.1 [nvidia]"
+        },
+        "nvidia/nemotron-3-ultra-550b-a55b": {},
+        "nvidia/nemotron-3.5-lightning-30b-a3b": {},
+        "minimaxai/minimax-m3.1-flash": {}
+      }
+    }
+  },
+  "agents": {
+    "explore": {
+      "disabled": true
+    }
+  }
+}

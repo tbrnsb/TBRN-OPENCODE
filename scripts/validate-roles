@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# validate-roles -- Stage 12: measure whether each agent's ASSIGNED model can
+# actually do that agent's job.
+#
+# This is a MEASUREMENT tool. It never edits routing or model assignments; it
+# reports which route served each role, whether it succeeded, and how long it
+# took. A failure here is evidence for a routing decision, not an automatic
+# one.
+#
+# Tasks are synthetic and carry no user or project data.
+set -uo pipefail
+
+WORKER="${WORKER:-$HOME/.local/bin/opencode-worker}"
+JSON_OUT="${JSON_OUT:-/dev/stdout}"
+TIMEOUT="${ROLE_TIMEOUT:-180}"
+
+if [[ ! -x "$WORKER" ]]; then
+  echo "validate-roles: worker not found at $WORKER" >&2
+  exit 2
+fi
+
+# agent <TAB> role-appropriate synthetic task <TAB> what "good" looks like
+read -r -d '' ROLES <<'EOF' || true
+explorer	Locate the file in this empty sandbox that defines the entrypoint. Answer with the path or NONE.	accurate path or honest NONE
+planner	Give a 3-step plan to add a function add(a,b) to a new module. One line per step.	exactly 3 ordered steps
+coder	Write a Python function add(a,b) returning a+b. Code only.	working code
+debugger	A function returns None instead of 0. Name the most likely single cause in under 10 words.	one concrete cause
+tester	Write a pytest test named test_add that asserts add(2,2)==4. Code only.	a pytest test
+code-reviewer	Review `def f(x): return x`. Give the single most important improvement.	names a concrete improvement
+security-reviewer	List one risk of `eval(user_input)` in under 10 words.	identifies code execution risk
+ui-reviewer	Give the single most important fix for a button with 4px text and 2px padding.	legibility or padding critique
+final-verifier	Given requirement "R1: prints OK", does `print("OK")` satisfy it? Answer YES or NO only.	YES
+general	Summarise in one word: photosynthesis converts light into what?	chemical energy
+orchestrator	You received 3 subtasks. Name the correct execution order. One line.	an order
+EOF
+
+printf '%-19s %-34s %-7s %-7s %s\n' "AGENT" "ROUTE SERVED" "RESULT" "SECS" "NOTE"
+printf '%s\n' "--------------------------------------------------------------------------"
+
+TMPD="$(mktemp -d)"
+trap 'rm -rf "$TMPD"' EXIT
+
+pass_n=0; fail_n=0
+rows=()
+
+while IFS=$'\t' read -r agent task want; do
+  [[ -z "${agent:-}" ]] && continue
+  start=$(date +%s)
+  if out=$(cd "$TMPD" && timeout "$TIMEOUT" "$WORKER" "$agent" "$task" </dev/null 2>&1); then
+    rc=0
+  else
+    rc=$?
+  fi
+  end=$(date +%s); secs=$((end - start))
+
+  route=$(printf '%s' "$out" | sed -n 's/.*worker=[^ ]* route=\([^ ]*\).*/\1/p' | tail -1)
+  [[ -z "$route" ]] && route="(none)"
+
+  if [[ $rc -eq 0 ]]; then
+    res="ok"; pass_n=$((pass_n+1))
+    note=$(printf '%s' "$out" | tr -d '\033' | sed 's/\[[0-9;]*[a-zA-Z]//g' | grep -vE '^\s*$' | tail -1 | cut -c1-46)
+  else
+    res="FAIL($rc)"; fail_n=$((fail_n+1))
+    note=$(printf '%s' "$out" | tr -d '\033' | sed 's/\[[0-9;]*[a-zA-Z]//g' | grep -viE '^\s*$' | tail -1 | cut -c1-46)
+  fi
+
+  printf '%-19s %-34s %-7s %-7s %s\n' "$agent" "$route" "$res" "$secs" "$note"
+  rows+=("$(printf '{"agent":"%s","route":"%s","rc":%d,"secs":%d,"want":"%s"}' \
+            "$agent" "$route" "$rc" "$secs" "$want")")
+done < <(printf '%s\n' "$ROLES")
+
+printf '%s\n' "--------------------------------------------------------------------------"
+printf 'roles exercised: %d   served: %d   failed: %d\n' \
+  "$((pass_n + fail_n))" "$pass_n" "$fail_n"
+
+if [[ "$JSON_OUT" != "/dev/stdout" ]]; then
+  printf '[\n  %s\n]\n' "$(IFS=$',\n'; echo "${rows[*]}")" > "$JSON_OUT"
+  echo "wrote $JSON_OUT"
+fi
+
+# A failed role is a finding, not necessarily a blocker: the worker may have
+# fallen back to a working route. Exit non-zero so CI notices.
+[[ $fail_n -eq 0 ]]

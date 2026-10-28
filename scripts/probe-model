@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# scripts/probe-model — probe one model through the stage ladder.
+#
+# Proves how far a model gets:
+#   catalog -> reachable -> basic response -> tool call
+#
+# Credentials are never read or passed by this script. Authentication is
+# handled entirely inside the `opencode` process, so there is nothing here to
+# leak. Output is redacted as a backstop.
+#
+# Usage:
+#   probe-model <provider/model> [--timeout SECONDS] [--json] [--skip-tool]
+#
+# Exit codes (stable, usable from scripts):
+#   0  ok-tool        model completed a tool call
+#   1  ok-basic       model responded but failed the tool stage
+#   2  model-unavailable
+#   3  auth-failure
+#   4  timeout
+#   5  provider-error
+#   6  network-error
+#   7  bad-response
+#   8  unknown
+
+set -uo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/classify.sh
+source "$REPO_ROOT/lib/classify.sh"
+
+MODEL="${1:-}"
+if [[ $# -gt 0 ]]; then shift; fi
+TIMEOUT=180
+JSON=false
+SKIP_TOOL=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    --json)    JSON=true; shift ;;
+    --skip-tool) SKIP_TOOL=true; shift ;;
+    -h|--help) sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 64 ;;
+  esac
+done
+
+if [[ -z "$MODEL" || "$MODEL" != */* ]]; then
+  echo "usage: probe-model <provider/model> [--timeout N] [--json] [--skip-tool]" >&2
+  exit 64
+fi
+
+PROVIDER="${MODEL%%/*}"
+MODEL_ID="${MODEL#*/}"
+
+command -v opencode >/dev/null 2>&1 || { echo "opencode not on PATH" >&2; exit 69; }
+
+WORKDIR="$(mktemp -d -t opencode-probe.XXXXXX)"
+trap 'rm -rf "$WORKDIR"' EXIT
+
+# Disposable, non-sensitive fixture. Deliberately trivial.
+FIXTURE="$WORKDIR/fixture.txt"
+printf 'alpha\nPROBE_SENTINEL_4417 line\nomega\n' > "$FIXTURE"
+
+# fixture path must be inside the working dir so the model reads *our* file
+cd "$WORKDIR" || exit 70
+
+# ---- stage 0: catalog -------------------------------------------------------
+CATALOG_STATE="$(catalog_lookup "$PROVIDER" "$MODEL_ID")"
+
+run_stage() {
+  # $1 = stage number, $2 = task text, $3 = sentinel expected in output
+  local stage="$1" task="$2" sentinel="$3"
+  local out="$WORKDIR/out-$stage.txt"
+  timeout --signal=TERM --kill-after=10s "${TIMEOUT}s" \
+    opencode run --auto --model "$MODEL" "$task" >"$out" 2>&1
+  echo "$?" > "$WORKDIR/rc-$stage.txt"
+  PROBE_STAGE="$stage" classify_outcome "$(cat "$WORKDIR/rc-$stage.txt")" "$out" "$sentinel"
+}
+
+# ---- stage 1+2: reachable and basic response -------------------------------
+# A trivial instruction with no tool use. Reaching a sane reply proves the
+# endpoint is reachable and the model answers.
+BASIC_OUT="$WORKDIR/basic.txt"
+timeout --signal=TERM --kill-after=10s "${TIMEOUT}s" \
+  opencode run --auto --model "$MODEL" \
+  "Reply with exactly this single token and nothing else: PROBE_SENTINEL_4417" \
+  >"$BASIC_OUT" 2>&1
+BASIC_RC=$?
+
+BASIC_OUTCOME="$(PROBE_STAGE=2 classify_outcome "$BASIC_RC" "$BASIC_OUT" "PROBE_SENTINEL_4417")"
+
+FINAL_OUTCOME="$BASIC_OUTCOME"
+STAGE_REACHED=1
+
+case "$BASIC_OUTCOME" in
+  ok-basic)
+    STAGE_REACHED=2
+    if [[ "$SKIP_TOOL" == "true" ]]; then
+      FINAL_OUTCOME="ok-basic"
+    else
+      # ---- stage 3: tool call ------------------------------------------------
+      TOOL_TASK="Use the grep tool to find which line number of $FIXTURE contains PROBE_SENTINEL_4417. Then reply with exactly: TOOL_OK_<linenumber>"
+      TOOL_OUTCOME="$(run_stage 3 "$TOOL_TASK" "TOOL_OK_")"
+      if [[ "$TOOL_OUTCOME" == "ok-tool" ]]; then
+        STAGE_REACHED=3
+        FINAL_OUTCOME="ok-tool"
+      else
+        # basic worked, tool stage did not: surface the tool-stage outcome
+        # because a specialist that cannot call tools is not usable.
+        FINAL_OUTCOME="$TOOL_OUTCOME"
+      fi
+    fi
+    ;;
+esac
+
+if [[ "$JSON" == "true" ]]; then
+  printf '{"model":"%s","catalog":"%s","stage_reached":%s,"outcome":"%s","exit":%s}\n' \
+    "$MODEL" "$CATALOG_STATE" "$STAGE_REACHED" "$FINAL_OUTCOME" \
+    "$(case "$FINAL_OUTCOME" in
+        ok-tool) echo 0;; ok-basic) echo 1;; model-unavailable) echo 2;;
+        auth-failure) echo 3;; timeout) echo 4;; provider-error) echo 5;;
+        network-error) echo 6;; bad-response) echo 7;; *) echo 8;; esac)"
+else
+  printf '%-38s catalog=%-8s stage=%s  %s\n' "$MODEL" "$CATALOG_STATE" "$STAGE_REACHED" "$FINAL_OUTCOME"
+fi
+
+# Diagnostic tail, redacted, only on failure.
+if [[ "$FINAL_OUTCOME" != "ok-tool" && "$FINAL_OUTCOME" != "ok-basic" && "$JSON" != "true" ]]; then
+  echo "  --- last lines of provider output (redacted) ---"
+  redact < "$BASIC_OUT" | tail -4 | sed 's/^/  /'
+fi
+
+case "$FINAL_OUTCOME" in
+  ok-tool) exit 0 ;;
+  ok-basic) exit 1 ;;
+  model-unavailable) exit 2 ;;
+  auth-failure) exit 3 ;;
+  timeout) exit 4 ;;
+  provider-error) exit 5 ;;
+  network-error) exit 6 ;;
+  bad-response) exit 7 ;;
+  *) exit 8 ;;
+esac

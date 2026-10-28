@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# scripts/validate-routes — check every configured route against the live
+# provider APIs and report how far each model actually gets.
+#
+# WHY THIS EXISTS
+#   A configured route is not a working route. Model IDs get retired, accounts
+#   lose entitlement, balances run out, and provider catalogs advertise models
+#   that the API then rejects. This walks the stage ladder for each one so
+#   routing decisions are made on evidence rather than on JSON that looks right.
+#
+#   Observed case (2026-09-29): `opencode models groq` listed
+#   `groq/qwen/qwen3.6-27b`, but the API returned
+#   "The model `qwen/qwen3.6-27b` does not exist". Catalog presence is a
+#   claim, not proof.
+#
+# SCOPE
+#   Read-only with respect to any OpenCode configuration. This script reads
+#   route definitions and calls `opencode run`; it never edits config, never
+#   writes state, and never touches credentials directly.
+#
+# USAGE
+#   validate-routes [--routes FILE] [--config FILE] [--timeout N] [--skip-tool]
+#                   [--json] [--only MODEL] [--dry-run]
+#
+#   --dry-run   list the routes that would be probed and exit. Makes no calls.
+#               Use this first: a full sweep costs real requests.
+#
+# EXIT
+#   0  every probed route reached ok-basic or better
+#   1  at least one route failed
+#   2  bad usage / missing config
+
+set -uo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$REPO_ROOT/lib/classify.sh"
+
+ROUTES_FILE="${OPENCODE_ROUTES:-$HOME/.config/opencode/provider-routes.json}"
+OPENCODE_CONFIG="${OPENCODE_CONFIG:-$HOME/.config/opencode/opencode.json}"
+PROBE="$REPO_ROOT/scripts/probe-model"
+TIMEOUT=180
+SKIP_TOOL=false
+JSON=false
+ONLY=""
+DRY_RUN=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --routes)    ROUTES_FILE="$2"; shift 2 ;;
+    --config)    OPENCODE_CONFIG="$2"; shift 2 ;;
+    --timeout)   TIMEOUT="$2"; shift 2 ;;
+    --skip-tool) SKIP_TOOL=true; shift ;;
+    --json)      JSON=true; shift ;;
+    --only)      ONLY="$2"; shift 2 ;;
+    --dry-run)   DRY_RUN=true; shift ;;
+    -h|--help)   sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 64 ;;
+  esac
+done
+
+if [[ ! -f "$ROUTES_FILE" ]]; then
+  echo "routes file not found: $ROUTES_FILE" >&2
+  echo "hint: pass --routes, or set OPENCODE_ROUTES" >&2
+  exit 2
+fi
+
+command -v python3 >/dev/null 2>&1 || { echo "python3 required" >&2; exit 2; }
+
+# Collect every route referenced by any agent, in stable order, with the
+# endpoint that serves it so failure domains are visible in the report.
+mapfile -t ROUTE_ROWS < <(
+  python3 - "$ROUTES_FILE" "$OPENCODE_CONFIG" <<'PY'
+import json, sys
+routes_path, opencode_path = sys.argv[1:]
+try:
+    d = json.load(open(routes_path))
+except Exception as e:
+    print(f"# error: {e}", file=sys.stderr); raise SystemExit(0)
+
+# endpoint per credential, when an opencode config is available
+endpoints = {}
+try:
+    oc = json.load(open(opencode_path))
+    for name, block in (oc.get("provider") or {}).items():
+        url = ((block.get("options") or {}).get("baseURL")) or "?"
+        endpoints[name] = url
+except Exception:
+    pass
+
+def host(url):
+    if not url or url == "?": return "?"
+    return url.split("//", 1)[-1].split("/", 1)[0]
+
+# Explicit domain label on a route wins over baseURL lookup: built-in
+# providers such as Zen are not redeclared in opencode.json, so they have no
+# provider block to read a baseURL from, yet they do have a real endpoint.
+route_domain = {}
+for r in d.get("api_routes") or []:
+    if isinstance(r, dict) and r.get("model") and r.get("domain"):
+        route_domain[r["model"]] = r["domain"]
+
+seen, rows = set(), []
+for agent, models in (d.get("agent_preferences") or {}).items():
+    if not isinstance(models, list): continue
+    for m in models:
+        if not isinstance(m, str) or m in seen: continue
+        seen.add(m)
+        cred = m.split("/", 1)[0]
+        url = route_domain.get(m) or endpoints.get(cred, "?")
+        rows.append((m, agent, host(url)))
+
+# report widest blast radius first: how many agents depend on this model
+dep = {}
+for m, a, _ in rows: dep[m] = dep.get(m, 0) + 1
+rows.sort(key=lambda r: (-dep[r[0]], r[0]))
+for m, a, h in rows:
+    print(f"{m}\t{a}\t{h}")
+PY
+)
+
+if [[ ${#ROUTE_ROWS[@]} -eq 0 ]]; then
+  echo "no routes found in $ROUTES_FILE" >&2
+  exit 2
+fi
+
+# failure-domain summary: same host means a shared outage, not independent
+# redundancy. Surfaces the "six routes but three domains" trap.
+echo "=== failure domains ==="
+for row in "${ROUTE_ROWS[@]}"; do
+  IFS=$'\t' read -r m a h <<< "$row"
+  echo "$h"
+done | sort | uniq -c | sort -rn | sed 's/^/  /'
+echo
+
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo "would probe ${#ROUTE_ROWS[@]} route(s) from $ROUTES_FILE:"
+  echo "  model                              first-agent            failure-domain"
+  for row in "${ROUTE_ROWS[@]}"; do
+    IFS=$'\t' read -r m a h <<< "$row"
+    printf '  %-34s %-22s %s\n' "$m" "$a" "$h"
+  done
+  echo
+  echo "dry run: no requests made. Re-run without --dry-run to probe."
+  exit 0
+fi
+
+PASS=0; FAIL=0
+declare -a RESULTS=()
+
+echo "=== route validation ==="
+for row in "${ROUTE_ROWS[@]}"; do
+  IFS=$'\t' read -r m a h <<< "$row"
+  [[ -n "$ONLY" && "$m" != "$ONLY" ]] && continue
+
+  probe_args=("$m" --timeout "$TIMEOUT")
+  [[ "$SKIP_TOOL" == "true" ]] && probe_args+=(--skip-tool)
+  out="$("$PROBE" "${probe_args[@]}" 2>&1)"
+  rc=$?
+  line="$(printf '%s\n' "$out" | grep -E 'catalog=' | head -1)"
+  catalog_state="$(printf '%s' "$line" | grep -oE 'catalog=[a-z]+' | cut -d= -f2)"
+  stage="$(printf '%s' "$line" | grep -oE 'stage=[0-9]+' | cut -d= -f2)"
+  outcome="$(printf '%s' "$line" | grep -oE '(ok-tool|ok-basic|model-unavailable|auth-failure|timeout|provider-error|network-error|bad-response|unknown)$' | tail -1)"
+
+  if [[ "$rc" == "0" || "$rc" == "1" ]]; then
+    PASS=$((PASS+1)); verdict="PASS"
+  else
+    FAIL=$((FAIL+1)); verdict="FAIL"
+  fi
+
+  printf '  %-8s %-36s domain=%-28s catalog=%-8s stage=%s outcome=%s\n' \
+    "$verdict" "$m" "$h" "${catalog_state:-?}" "${stage:-?}" "${outcome:-unknown}"
+  RESULTS+=("$m|${h}|${catalog_state:-?}|${stage:-?}|${outcome:-unknown}")
+
+  if [[ "$rc" == "4" ]]; then
+    echo "           (timeout — provider may be slow rather than down; retest later)"
+  fi
+done
+
+echo
+echo "=== summary ==="
+echo "  passed: $PASS"
+echo "  failed: $FAIL"
+echo
+echo "Reminder: a passing route proves reachability, not fitness for a given"
+echo "specialist. Agent->model suitability is a separate judgement."
+
+if [[ "$JSON" == "true" ]]; then
+  echo '['
+  for i in "${!RESULTS[@]}"; do
+    IFS='|' read -r m h c s o <<< "${RESULTS[$i]}"
+    sep=","; [[ "$i" -eq $((${#RESULTS[@]} - 1)) ]] && sep=""
+    printf '  {"model":"%s","failure_domain":"%s","catalog":"%s","stage":%s,"outcome":"%s"}%s\n' \
+      "$m" "$h" "$c" "${s:-0}" "$o" "$sep"
+  done
+  echo ']'
+fi
+
+[[ "$FAIL" -eq 0 ]] && exit 0 || exit 1

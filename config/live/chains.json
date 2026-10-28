@@ -1,0 +1,184 @@
+{
+  "_comment": "Single source of truth for all role model chains. IDs re-verified against `opencode models` (453 models, 2026-10-28): every entry present. Ordering is per-role as specified by the user on 2026-10-28; the old global 'fast models first, slow models last' rule no longer applies (review roles intentionally put the 550B model early for depth). chains -> generated agents/* via scripts/gen-fallbacks.py. Do not edit generated files by hand.",
+  "last_resort": [
+    "opencode/deepseek-v4.1-flash-free",
+    "mistral/codestral-latest",
+    "nvidia_secondary/nvidia/nemotron-3.5-lightning-30b-a3b"
+  ],
+  "_last_resort_comment": "Global floor, tried IN ORDER after a role's own rungs are exhausted and before the mastermind takes over. Set 2026-10-28 (was a single model).",
+  "families": {
+    "_comment": "Critic, code-reviewer, security-reviewer and final-verifier must differ BY FAMILY from EVERY model in author_models (coder, debugger, takeovers). Only the Nemotron group is merged (explicit user rule: Nemotron NIM and Nemotron Zen are one family); every other model is its own family. Both provider spellings are listed so family() resolves nvidia and nvidia_secondary routes to the same family.",
+    "nemotron": [
+      "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
+      "nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b",
+      "opencode/nemotron-3-ultra-free",
+      "opencode/nemotron-3.5-lightning-free",
+      "opencode/nemotron-3.5-super-vl-free",
+      "nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
+      "nvidia_secondary/nvidia/nemotron-3.5-lightning-30b-a3b"
+    ]
+  },
+  "roles": {
+    "mastermind": {
+      "label": "Mastermind",
+      "mode": "primary",
+      "rungs": [
+        "opencode/mimo-v2.6-flash-free",
+        "opencode/deepseek-v4.1-flash-free",
+        "nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
+        "google/gemini-3.5-flash"
+      ],
+      "_flag": "2026-10-28 user list: nemotron-3.5-lightning-30b-a3b replaces opencode/nemotron-3.5-lightning-free at rung 3."
+    },
+    "planner": {
+      "label": "Analyst/Planner",
+      "mode": "subagent",
+      "rungs": [
+        "opencode/glm-5.3-flash-free",
+        "nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b",
+        "opencode/deepseek-v4.1-flash-free",
+        "google/gemini-3.7-flash"
+      ],
+      "_flag": "2026-10-28 user list: glm first; 550B on the patient nvidia_secondary lane at rung 2 (deliberate depth before cost)."
+    },
+    "coder": {
+      "label": "Coder",
+      "mode": "subagent",
+      "rungs": [
+        "opencode/glm-5.3-flash-free",
+        "mistral/codestral-latest",
+        "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
+        "opencode/deepseek-v4.1-flash-free"
+      ],
+      "_flag": "2026-10-28 user list: glm -> codestral -> 550B -> deepseek. big-pickle stays removed (fabricated output, 2026-10-09)."
+    },
+    "tester": {
+      "label": "Tester",
+      "mode": "subagent",
+      "rungs": [
+        "opencode/deepseek-v4.1-flash-free",
+        "mistral/codestral-latest",
+        "opencode/glm-5.3-flash-free",
+        "google/gemini-3.5-flash"
+      ],
+      "_flag": "2026-10-28 user list: deepseek -> codestral -> glm -> gemini-3.5. Groq gpt-oss-120b stays removed (8K TPM)."
+    },
+    "debugger": {
+      "label": "Debugger",
+      "mode": "subagent",
+      "rungs": [
+        "opencode/deepseek-v4.1-flash-free",
+        "opencode/glm-5.3-flash-free",
+        "nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b",
+        "google/gemini-3.7-flash"
+      ],
+      "_flag": "2026-10-28 user list: deepseek -> glm -> 550B (patient lane) -> gemini-3.7."
+    },
+    "critic": {
+      "label": "Critic",
+      "mode": "subagent",
+      "rungs": [
+        "opencode/glm-5.3-flash-free",
+        "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
+        "opencode/deepseek-v4.1-flash-free",
+        "google/gemini-3.7-flash"
+      ],
+      "_flag": "2026-10-28 user list. Family rule is enforced at runtime against STATE.md author_models; this chain gives four distinct families (glm, nemotron, deepseek, google). beam-free dropped from this role."
+    },
+    "designer": {
+      "label": "Designer",
+      "mode": "subagent",
+      "rungs": [
+        "opencode/glm-5.3-flash-free",
+        "nvidia/minimaxai/minimax-m3.1-flash",
+        "opencode/mimo-v2.6-flash-free",
+        "google/gemini-3.7-flash"
+      ],
+      "_flag": "2026-10-28 user list. All four remain image-capable (attach=True). Do not substitute nemotron or codestral here."
+    },
+    "copywriter": {
+      "label": "Copywriter",
+      "mode": "subagent",
+      "rungs": [
+        "opencode/mimo-v2.6-flash-free",
+        "opencode/deepseek-v4.1-flash-free",
+        "mistral/codestral-latest",
+        "google/gemini-3.5-flash"
+      ],
+      "_flag": "2026-10-28 user list (unchanged from previous chain)."
+    },
+    "explorer": {
+      "label": "Repository Explorer",
+      "mode": "subagent",
+      "rungs": [
+        "opencode/mimo-v2.6-flash-free",
+        "nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
+        "opencode/deepseek-v4.1-flash-free",
+        "nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b"
+      ],
+      "_flag": "2026-10-28 user list: lightning-30b replaces opencode/nemotron-3.5-lightning-free at rung 2; 550B on the patient lane at rung 4. Still avoids codestral (garbage reports under load)."
+    },
+    "code-reviewer": {
+      "label": "Code Reviewer",
+      "mode": "subagent",
+      "rungs": [
+        "opencode/glm-5.3-flash-free",
+        "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
+        "opencode/deepseek-v4.1-flash-free",
+        "google/gemini-3.7-flash"
+      ],
+      "_flag": "2026-10-28 user list: glm -> 550B -> deepseek -> gemini-3.7. Same author-family separation rule as critic. beam-free dropped."
+    },
+    "archiver": {
+      "label": "Archiver + GitHub",
+      "mode": "subagent",
+      "rungs": [
+        "opencode/mimo-v2.6-flash-free",
+        "opencode/deepseek-v4.1-flash-free",
+        "mistral/codestral-latest",
+        "google/gemini-3.5-flash"
+      ],
+      "_flag": "2026-10-28 user list (unchanged from previous chain)."
+    },
+    "security-reviewer": {
+      "label": "Security Reviewer",
+      "mode": "subagent",
+      "rungs": [
+        "nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b",
+        "opencode/glm-5.3-flash-free",
+        "mistral/codestral-latest"
+      ],
+      "_flag": "NEW 2026-10-28: promoted from single pin to a 3-rung chain. Depth-first: 550B on the patient lane, then glm, then codestral."
+    },
+    "final-verifier": {
+      "label": "Final Verifier",
+      "mode": "subagent",
+      "rungs": [
+        "nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b",
+        "opencode/glm-5.3-flash-free",
+        "opencode/deepseek-v4.1-flash-free"
+      ],
+      "_flag": "NEW 2026-10-28: promoted from single pin to a 3-rung chain. Runs acceptance checks itself; edit denied."
+    },
+    "ui-reviewer": {
+      "label": "UI Reviewer",
+      "mode": "subagent",
+      "rungs": [
+        "google/gemini-3.7-flash",
+        "nvidia/minimaxai/minimax-m3.1-flash",
+        "opencode/glm-5.3-flash-free"
+      ],
+      "_flag": "NEW 2026-10-28: promoted from single pin to a 3-rung chain. All three are image-capable so screenshots can be reviewed."
+    },
+    "general": {
+      "label": "General Purpose",
+      "mode": "subagent",
+      "rungs": [
+        "opencode/mimo-v2.6-flash-free",
+        "opencode/deepseek-v4.1-flash-free",
+        "mistral/codestral-latest"
+      ],
+      "_flag": "NEW 2026-10-28: 3-rung chain for the general-purpose agent (overrides the built-in pin)."
+    }
+  }
+}

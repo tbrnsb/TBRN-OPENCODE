@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+# scripts/verify-integrity — detect accidental or unauthorised weakening of the
+# safety boundary, and fail closed on impossible states.
+#
+# WHAT THIS IS NOT
+#   It is not a key-management or signing system. There is no secret to leak
+#   and no trust root to bootstrap. The threat it addresses is mundane and
+#   real: a config edited by hand, a half-finished update, a reinstall that
+#   replaced a labelled routes file with an unlabelled one, or a runtime that
+#   has drifted from the source it was built from.
+#
+# DESIGN
+#   A manifest is written at install time recording the SHA256 of every
+#   security-relevant file plus the schema versions that were in force. Any
+#   later divergence is reported. Divergence is not automatically fatal --
+#   legitimate edits exist -- but it is never silent.
+#
+# EXIT
+#   0  consistent (warnings permitted)
+#   1  integrity problem found
+#   2  usage / missing file
+
+set -uo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+CFG="${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}"
+ROUTES="$CFG/provider-routes.json"
+POLICY="$CFG/orchestrator-policy.json"
+OCJSON="$CFG/opencode.json"
+MANIFEST="$CFG/.orchestrator-manifest.json"
+WORKER_BIN="${WORKER_BIN:-$HOME/.local/bin/opencode-worker}"
+POLICY_LIB="${POLICY_LIB:-$HOME/.local/lib/policy.py}"
+STATEIO_LIB="${STATEIO_LIB:-$HOME/.local/lib/stateio.py}"
+CLASSIFY_LIB="${CLASSIFY_LIB:-$HOME/.local/lib/classify.sh}"
+RECORD=false
+STRICT=false
+JSON=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --record)  RECORD=true; shift ;;
+    --strict)  STRICT=true; shift ;;
+    --json)    JSON=true; shift ;;
+    -h|--help) sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 64 ;;
+  esac
+done
+
+hash_of() { [[ -f "$1" ]] && sha256sum "$1" | cut -d' ' -f1 || echo "MISSING"; }
+
+# ------------------------------------------------------------------ record ---
+if [[ "$RECORD" == "true" ]]; then
+  command -v jq >/dev/null || { echo "jq required" >&2; exit 2; }
+  tmp="$MANIFEST.tmp.$$"
+  jq -n \
+    --arg ts "$(date -Is)" \
+    --arg w "$(hash_of "$WORKER_BIN")" \
+    --arg p "$(hash_of "$POLICY_LIB")" \
+    --arg s "$(hash_of "$STATEIO_LIB")" \
+    --arg cl "$(hash_of "$CLASSIFY_LIB")" \
+    --arg r "$(hash_of "$ROUTES")" \
+    --arg c "$(hash_of "$POLICY")" \
+    --arg o "$(hash_of "$OCJSON")" \
+    --argjson rver "$(jq -r '.version // 0' "$ROUTES" 2>/dev/null || echo 0)" \
+    --argjson pver "$(jq -r '.version // 0' "$POLICY" 2>/dev/null || echo 0)" \
+    '{recorded_at:$ts,
+      files:{worker:$w, policy_lib:$p, stateio_lib:$s, classify_lib:$cl,
+             routes:$r, ceiling:$c, opencode:$o},
+      schema:{routes:$rver, ceiling:$pver}}' > "$tmp" && mv "$tmp" "$MANIFEST"
+  echo "recorded integrity manifest: $MANIFEST"
+  exit 0
+fi
+
+# ------------------------------------------------------------------ verify ---
+PROBLEMS=0; WARNINGS=0
+note()  { printf '  %-8s %s\n' "$1" "$2"; }
+problem() { PROBLEMS=$((PROBLEMS+1)); note "PROBLEM" "$1"; }
+warning() { WARNINGS=$((WARNINGS+1)); note "WARNING" "$1"; }
+
+echo "=== integrity verification ==="
+
+# 1. required files exist
+for f in "$ROUTES" "$POLICY" "$OCJSON"; do
+  [[ -f "$f" ]] || problem "missing required config: $f"
+done
+
+# 2. every file parses
+for f in "$ROUTES" "$POLICY" "$OCJSON"; do
+  [[ -f "$f" ]] || continue
+  jq empty "$f" 2>/dev/null || problem "unparseable JSON: $f"
+done
+for f in "$WORKER_BIN" "$POLICY_LIB"; do
+  [[ -f "$f" ]] || { problem "missing runtime component: $f"; continue; }
+  if [[ "$f" == *.py ]]; then
+    python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$f" 2>/dev/null \
+      || problem "unparseable python: $f"
+  else
+    bash -n "$f" 2>/dev/null || problem "unparseable shell: $f"
+  fi
+done
+
+# 3. duplicate keys anywhere in a security-relevant config
+for f in "$ROUTES" "$POLICY" "$OCJSON"; do
+  [[ -f "$f" ]] || continue
+  dupes=$(python3 - "$f" <<'PY'
+import json, sys
+def hook(pairs):
+    seen=set()
+    for k,_ in pairs:
+        if k in seen: raise ValueError("duplicate key %r" % k)
+        seen.add(k)
+    return dict(pairs)
+try:
+    json.load(open(sys.argv[1]), object_pairs_hook=hook)
+    print("")
+except Exception as e:
+    print(str(e))
+PY
+)
+  [[ -z "$dupes" ]] || problem "ambiguous duplicate key in $f: $dupes"
+done
+
+# 4. routes schema + labelling completeness
+if [[ -f "$ROUTES" ]]; then
+  rver=$(jq -r '.version // "absent"' "$ROUTES" 2>/dev/null)
+  case "$rver" in
+    2) : ;;
+    1) warning "routes schema is v1: unlabelled routes will FAIL CLOSED (operationally breaking, not a security hole)" ;;
+    *) problem "unexpected routes schema version: $rver" ;;
+  esac
+  if [[ "$rver" == "2" ]]; then
+    unlabelled=$(jq -r '[.api_routes[] | select(.data_policy == null)] | length' "$ROUTES" 2>/dev/null || echo 0)
+    [[ "$unlabelled" == "0" ]] || problem "$unlabelled route(s) missing data_policy in a v2 file (they will be least-safe)"
+    badlabel=$(jq -r '[.api_routes[].data_policy | select(. != null) | select(. != "private-safe" and . != "training-optin" and . != "trial-logged" and . != "training-explicit")] | length' "$ROUTES" 2>/dev/null || echo 0)
+    [[ "$badlabel" == "0" ]] || problem "$badlabel route(s) carry an unrecognised data_policy label"
+    dupmodels=$(jq -r '[.api_routes[].model] | group_by(.) | map(select(length>1)) | length' "$ROUTES" 2>/dev/null || echo 0)
+    [[ "$dupmodels" == "0" ]] || problem "$dupmodels duplicated route model(s) in api_routes (most-restrictive wins, but the config is ambiguous)"
+  fi
+fi
+
+# 5. ceiling sanity
+if [[ -f "$POLICY" ]]; then
+  ceiling=$(jq -r '.safety_ceiling // "absent"' "$POLICY" 2>/dev/null)
+  case "$ceiling" in
+    private-safe|training-optin|trial-logged) : ;;
+    training-explicit)
+      warning "ceiling is training-explicit: NO ceiling remains. Unlabelled and training-sharing routes become usable." ;;
+    *) problem "unrecognised or absent safety_ceiling: $ceiling" ;;
+  esac
+  dflt=$(jq -r '.default_project_class // "absent"' "$POLICY" 2>/dev/null)
+  case "$dflt" in
+    private|public|disposable) : ;;
+    *) problem "unrecognised default_project_class: $dflt" ;;
+  esac
+fi
+
+# 6. no route is labelled less safe than the ceiling permits for private work
+if [[ -f "$ROUTES" && -f "$POLICY" ]] && command -v python3 >/dev/null; then
+  priv=$(python3 "$REPO_ROOT/lib/policy.py" --routes "$ROUTES" --policy "$POLICY" \
+          --check-model "nonexistent/probe" >/dev/null 2>&1; echo $?)
+  [[ "$priv" == "3" ]] || problem "ceiling is not fail-closed for a private workload (check-model returned $priv)"
+fi
+
+# 7. installed runtime vs repository source
+for pair in "$WORKER_BIN:$REPO_ROOT/scripts/opencode-worker" \
+            "$POLICY_LIB:$REPO_ROOT/lib/policy.py" \
+            "$STATEIO_LIB:$REPO_ROOT/lib/stateio.py" \
+            "$CLASSIFY_LIB:$REPO_ROOT/lib/classify.sh"; do
+  live="${pair%%:*}"; repo="${pair#*:}"
+  [[ -f "$live" && -f "$repo" ]] || continue
+  if ! cmp -s "$live" "$repo"; then
+    problem "installed runtime differs from repository source: $(basename "$live")"
+  fi
+done
+
+# 8. manifest comparison
+# Compare each tracked file's CURRENT HASH against the hash recorded at
+# --record time. This previously compared the recorded hash against the
+# file's PATH, so every tracked file was reported as "changed" regardless
+# of content.
+if [[ -f "$MANIFEST" ]]; then
+  while IFS=$'\t' read -r key path; do
+    [[ -n "$key" && -n "$path" ]] || continue
+    rec=$(jq -r --arg k "$key" '.files[$k] // "unrecorded"' "$MANIFEST" 2>/dev/null)
+    [[ "$rec" == "unrecorded" || "$rec" == "null" ]] && { warning "$key is not recorded in the manifest"; continue; }
+    [[ "$rec" == "MISSING" ]] && continue
+    [[ -f "$path" ]] || { problem "$key is recorded but missing from disk: $path"; continue; }
+    cur=$(hash_of "$path")
+    if [[ "$rec" != "$cur" ]]; then
+      problem "$key changed since manifest recorded ($(printf '%.12s' "$rec") -> $(printf '%.12s' "$cur"))"
+    fi
+  done < <(printf 'worker\t%s\npolicy_lib\t%s\nstateio_lib\t%s\nclassify_lib\t%s\nroutes\t%s\nceiling\t%s\nopencode\t%s\n' \
+               "$WORKER_BIN" "$POLICY_LIB" "$STATEIO_LIB" "$CLASSIFY_LIB" \
+               "$ROUTES" "$POLICY" "$OCJSON")
+else
+  warning "no integrity manifest at $MANIFEST (run verify-integrity --record after a deliberate change)"
+fi
+
+echo
+echo "  problems: $PROBLEMS   warnings: $WARNINGS"
+
+if [[ "$STRICT" == "true" && "$WARNINGS" -gt 0 ]]; then
+  echo "  strict mode: warnings treated as failure"
+  exit 1
+fi
+[[ "$PROBLEMS" -eq 0 ]] || exit 1
+exit 0

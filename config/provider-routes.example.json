@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "_comment": "Schema v2 adds data_policy labels per route, enabling the safety ceiling enforced by lib/policy.py. Routes WITHOUT a top-level data_policies key are schema v1 and pass through unfiltered.",
+  "data_policies": {
+    "private-safe": {
+      "rank": 0,
+      "description": "Zero-retention or own-key billing. Safe for private and confidential source code.",
+      "basis": "Provider docs or own-credential direct route."
+    },
+    "training-optin": {
+      "rank": 1,
+      "description": "Provider states data may be used to improve the model during a free period. NOT for private code.",
+      "basis": "Provider docs"
+    },
+    "trial-logged": {
+      "rank": 2,
+      "description": "Trial/limited-time endpoint with session logging. Docs instruct not to submit personal or confidential data. NOT for private code.",
+      "basis": "Provider docs"
+    },
+    "training-explicit": {
+      "rank": 3,
+      "description": "Provider explicitly trains on prompts/completions. Never use for private or public real code.",
+      "basis": "Provider docs"
+    }
+  },
+  "api_routes": [
+    {
+      "credential": "your-nvidia-key",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b",
+      "family": "nemotron",
+      "data_policy": "private-safe"
+    },
+    {
+      "credential": "your-openrouter-key",
+      "model": "openrouter/google/gemini-2.5-flash",
+      "family": "gemini",
+      "data_policy": "training-optin"
+    },
+    {
+      "credential": "your-groq-key",
+      "model": "groq/llama-3.3-70b-versatile",
+      "family": "llama",
+      "data_policy": "training-optin"
+    }
+  ]
+}

@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# scripts/validate-pins — check that every real AGENT PIN is
+# permitted by the effective data-policy ceiling.
+#
+# WHY THIS EXISTS
+#   lib/policy.py gates ONE thing: the model the worker passes to
+#   `opencode run --model`. It does not, and structurally cannot, govern the
+#   models that subagents use once the orchestrator spawns them. Those come
+#   from the "model" frontmatter of each agents/<name>.md. The "agent" block in
+#   opencode.json is ignored by OpenCode, so it is reported as drift only.
+#
+#   So a top-level run can be correctly filtered onto a private-safe route
+#   while a subagent pinned to a trial-logged endpoint is still contacted.
+#   Nothing in the current design prevents that. This script makes it
+#   detectable rather than invisible.
+#
+#   It reports; it does not modify anything.
+#
+# EXIT
+#   0  every pinned model is permitted under the ceiling
+#   1  at least one pin would violate the ceiling
+#   2  usage / config problem
+
+set -uo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+POLICY_PY="${REPO_ROOT}/lib/policy.py"
+
+OPENCODE_CONFIG="${OPENCODE_CONFIG:-$HOME/.config/opencode/opencode.json}"
+ROUTES_FILE="${OPENCODE_ROUTES:-$HOME/.config/opencode/provider-routes.json}"
+POLICY="${HOME}/.config/opencode/orchestrator-policy.json"
+PROJECT_POLICY=""
+JSON=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --config)         OPENCODE_CONFIG="$2"; shift 2 ;;
+    --routes)         ROUTES_FILE="$2"; shift 2 ;;
+    --policy)         POLICY="$2"; shift 2 ;;
+    --project-policy) PROJECT_POLICY="$2"; shift 2 ;;
+    --json)           JSON=true; shift ;;
+    -h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 64 ;;
+  esac
+done
+
+for f in "$OPENCODE_CONFIG" "$ROUTES_FILE"; do
+  [[ -f "$f" ]] || { echo "missing: $f" >&2; exit 2; }
+done
+command -v python3 >/dev/null || { echo "python3 required" >&2; exit 2; }
+
+exec python3 - "$POLICY_PY" "$OPENCODE_CONFIG" "$ROUTES_FILE" "$POLICY" "$PROJECT_POLICY" "$JSON" <<'PY'
+import json, os, subprocess, sys
+
+policy_py, opencode_path, routes_path, policy_path, project_path, as_json = sys.argv[1:]
+
+routes = json.load(open(routes_path))
+oc = json.load(open(opencode_path))
+
+api = {r.get("model"): r for r in (routes.get("api_routes") or []) if isinstance(r, dict)}
+RANK = {"private-safe": 0, "training-optin": 1, "trial-logged": 2, "training-explicit": 3}
+UNKNOWN = 3
+
+# Ask the policy engine what each agent would actually be allowed to use.
+# Using the engine (rather than re-deriving rank math here) keeps a single
+# source of truth for the ceiling.
+def allowed_for(agent):
+    p = subprocess.run(
+        [sys.executable, policy_py, "--routes", routes_path,
+         "--policy", policy_path, "--agent", agent] +
+        ([] if not project_path else ["--project-policy", project_path]),
+        capture_output=True, text=True)
+    return set(x for x in p.stdout.split() if x)
+
+# Enumerate the agents OpenCode actually reads, not the keys it ignores.
+sys.path.insert(0, os.path.dirname(os.path.abspath(policy_py)))
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location("_pol", policy_py)
+_pol = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_pol)
+
+cfg_dir = os.environ.get("OPENCODE_CONFIG_DIR") or os.path.dirname(
+    os.path.abspath(opencode_path))
+declared = (oc.get("agent") or {}) if isinstance(oc, dict) else {}
+
+names = set()
+agents_dir = os.path.join(cfg_dir, "agents")
+if os.path.isdir(agents_dir):
+    names |= {f[:-3] for f in os.listdir(agents_dir) if f.endswith(".md")}
+names |= set(declared)
+
+findings, lines, drift = [], [], []
+for name in sorted(names):
+    if not _pol.AGENT_MD_NAME.match(name):
+        continue
+    pin, source = _pol.effective_pin(name, project_path or None, cfg_dir, routes)
+    if not pin:
+        findings.append((name, source))
+        lines.append((name, "?", "(none)", "unlabelled", "UNPINNED"))
+        continue
+    permitted = allowed_for(name)
+    verdict = "OK" if pin in permitted else "VIOLATION"
+    if verdict == "VIOLATION":
+        findings.append((name, pin))
+    pol = (api.get(pin) or {}).get("data_policy")
+    lines.append((name, source, pin, pol or "unlabelled", verdict))
+    d = (declared.get(name) or {}).get("model")
+    if d and d != pin:
+        drift.append((name, d, pin))
+
+if as_json == "true":
+    print(json.dumps({
+        "pins_checked": len(lines),
+        "violations": [{"agent": a, "model": m} for a, m in findings],
+        "drift": [{"agent": a, "opencode_json": d, "effective": e} for a, d, e in drift],
+    }, indent=2))
+else:
+    print("=== agent pin policy check ===")
+    print("  (the worker gates its OWN --model; these pins govern SUBAGENT models)")
+    for name, mode, pin, pol, verdict in lines:
+        print("  %-9s %-9s %-38s %-13s %s" % (verdict, mode, pin, pol, name))
+    print()
+    print("  checked: %d   violations: %d" % (len(lines), len(findings)))
+    if drift:
+        print()
+        for a, d, e in drift:
+            print("  DRIFT  %s: layers disagree - opencode.json=%s effective=%s"
+                  " (stricter pin used)" % (a, d, e))
+    if findings:
+        print()
+        print("  A violation means a subagent pinned to a disallowed model can be")
+        print("  spawned for work the ceiling was meant to restrict. Repin that agent")
+        print("  to a permitted model, or lower the workload to a class that allows it.")
+
+sys.exit(1 if findings else 0)
+PY

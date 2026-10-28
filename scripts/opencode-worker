@@ -1,0 +1,534 @@
+record_success() {
+  local route="$1"
+  python3 - "${WORKER_ROOT}/lib/stateio.py" "$CIRCUIT_FILE" "$route" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1].rsplit("/", 1)[0])
+import stateio
+
+lib, circuit_file, route = sys.argv[1:4]
+
+def mutate(data):
+    if route in data:
+        data[route]["failures"] = 0
+        data[route]["cooldown_until"] = 0
+
+stateio.locked_update(circuit_file, mutate, default=dict)
+PY
+}
+
+#!/usr/bin/env bash
+set -u
+
+AGENT="${1:-general}"
+TASK="${2:-}"
+ROOT="$(pwd)"
+ROUTES="${HOME}/.config/opencode/provider-routes.json"
+POLICY="${HOME}/.config/opencode/orchestrator-policy.json"
+PROJECT_POLICY="${ROOT}/.orchestrator/policy.json"
+# Worker state lives under the orchestrator's OWN namespace, not inside
+# .opencode/. .opencode/ belongs to OpenCode: it ships its own .gitignore
+# (node_modules, package.json, ...) that does not cover orchestration state,
+# so writing there left circuit-breaker and attempt files as untracked,
+# stageable files in the user's repository. .orchestrator/ is already the
+# namespace this worker reads its project policy from.
+STATE_DIR="${ROOT}/.orchestrator/worker-state"
+STATE="${STATE_DIR}/orchestration-state.md"
+STATE_TMP="${STATE}.tmp.$$"
+WORKER_ROOT="${HOME}/.config/opencode/go"
+# shellcheck source=lib/classify.sh
+[[ -f "${WORKER_ROOT}/lib/classify.sh" ]] && source "${WORKER_ROOT}/lib/classify.sh"
+
+[[ -n "$TASK" ]] || { echo "usage: opencode-worker <agent> \"task\"" >&2; exit 2; }
+[[ -f "$ROUTES" ]] || { echo "Missing $ROUTES" >&2; exit 2; }
+
+mkdir -p "$STATE_DIR"
+
+# Self-ignore. The worker must never require the user to edit their project
+# .gitignore, and must never appear in `git status`. A .gitignore containing
+# "*" inside the state directory ignores the directory's entire contents while
+# leaving the rest of .orchestrator/ (e.g. policy.json) committable.
+if [[ ! -f "$STATE_DIR/.gitignore" ]]; then
+  printf '*\n' > "$STATE_DIR/.gitignore"
+fi
+
+# Resolve the agent's route chain through the data-policy safety ceiling.
+#
+# lib/policy.py enforces:
+#   global ceiling  ->  project may only narrow  ->  filtered chain
+# and exits 3 (FAIL_CLOSED) when no permitted route survives. The worker must
+# honour that exit rather than falling back to an ineligible route.
+#
+# If the policy library is absent we CANNOT verify the ceiling, so we refuse to
+# route. An earlier version fell back to an unfiltered inline loader here,
+# which meant deleting or renaming policy.py silently disabled all safety
+# enforcement. Absence of the enabler is not consent to proceed.
+if [[ ! -f "${WORKER_ROOT}/lib/policy.py" ]]; then
+  {
+    echo "# OpenCode Orchestration State"
+    echo
+    echo "- Updated: $(date -Is)"
+    echo "- Agent: $AGENT"
+    echo "- Status: blocked"
+    echo "- Attempt: 0"
+    echo "- Route: none"
+    echo
+    echo "## Objective"
+    echo
+    echo "$TASK"
+    echo
+    echo "## Detail"
+    echo
+    echo "Safety policy library not found at ${WORKER_ROOT}/lib/policy.py. Refusing to route without it: the global data-safety ceiling cannot be enforced, and selecting a route unverified could send restricted data to an ineligible provider. Remediation: restore lib/policy.py, or reinstall via install/install.sh."
+  } > "$STATE_TMP" && mv "$STATE_TMP" "$STATE"
+  echo "Blocked: policy library missing at ${WORKER_ROOT}/lib/policy.py (cannot enforce safety ceiling)" >&2
+  exit 3
+fi
+
+# Capture routes via command substitution, NOT process substitution.
+# `mapfile < <(cmd)` leaves $? as mapfile's status, so the policy exit code
+# is lost and the fail-closed guard below can never fire. Command substitution
+# propagates the real status.
+POLICY_OUT="$(
+  python3 "${WORKER_ROOT}/lib/policy.py" \
+    --routes "$ROUTES" \
+    --policy "$POLICY" \
+    --project-policy "$PROJECT_POLICY" \
+    --agent "$AGENT" --explain 2>>"${STATE_DIR}/policy.log"
+)"
+POLICY_STATUS=$?
+
+# Bounded retention. The policy decision trail is worth keeping, but an
+# unbounded append-only log in every project is a slow disk leak. Rotate in
+# place: keep the tail, and keep one previous generation.
+POLICY_LOG="${STATE_DIR}/policy.log"
+if [[ -f "$POLICY_LOG" ]] && [[ "$(wc -c < "$POLICY_LOG")" -gt 262144 ]]; then
+  tail -c 131072 "$POLICY_LOG" > "${POLICY_LOG}.1" 2>/dev/null || true
+  : > "$POLICY_LOG"
+fi
+
+CANDIDATES=()
+if [[ -n "$POLICY_OUT" ]]; then
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && CANDIDATES+=("$line")
+  done <<< "$POLICY_OUT"
+fi
+if [[ "$POLICY_STATUS" == "3" ]]; then
+  # Fail closed. Do not select an ineligible route "just this once".
+  {
+    echo "# OpenCode Orchestration State"
+    echo
+    echo "- Updated: $(date -Is)"
+    echo "- Agent: $AGENT"
+    echo "- Status: blocked"
+    echo "- Attempt: 0"
+    echo "- Route: none"
+    echo
+    echo "## Objective"
+    echo
+    echo "$TASK"
+    echo
+    echo "## Detail"
+    echo
+    echo "Data-policy ceiling left no permitted route for this agent. Refusing to fall back to an ineligible route. Review $POLICY and the route data_policy labels in $ROUTES."
+  } > "$STATE_TMP" && mv "$STATE_TMP" "$STATE"
+  echo "Blocked by data-policy ceiling: no permitted route for agent=$AGENT" >&2
+  exit 3
+fi
+
+# ---- project agent-pin preflight -------------------------------------------
+# The ceiling above governs ONLY the model this worker passes to `opencode
+# run`. It cannot govern the model a SUBAGENT uses after the orchestrator
+# spawns it: that comes from the agent's own "model" pin, and a project-local
+# opencode.json can redefine those pins, overriding the global ones.
+#
+# So a private project could declare itself private (top-level filtered to a
+# safe route) while pinning its subagents to a trial-logged endpoint. Verified
+# as a real behaviour of OpenCode's config merge. Refuse rather than let
+# private work reach a provider the ceiling excluded.
+PROJECT_CONFIG="${ROOT}/opencode.json"
+if [[ -f "$PROJECT_CONFIG" ]]; then
+  OFFENDING="$(
+    python3 - "$PROJECT_CONFIG" "${WORKER_ROOT}/lib/policy.py" \
+                "$ROUTES" "$POLICY" "$PROJECT_POLICY" <<'PY'
+import json, subprocess, sys
+proj, policy_py, routes, policy, projpol = sys.argv[1:]
+try:
+    cfg = json.load(open(proj))
+except Exception as exc:
+    print("__PARSE_ERROR__ %s" % exc); raise SystemExit(0)
+
+bad = []
+for name, block in sorted((cfg.get("agent") or {}).items()):
+    if not isinstance(block, dict): continue
+    pin = block.get("model")
+    if not pin: continue
+    args = [sys.executable, policy_py, "--routes", routes, "--policy", policy,
+            "--check-model", pin]
+    if projpol: args += ["--project-policy", projpol]
+    rc = subprocess.run(args, capture_output=True).returncode
+    if rc == 3:
+        bad.append("%s=%s" % (name, pin))
+for b in bad: print(b)
+PY
+  )"
+  if [[ -n "$OFFENDING" ]]; then
+    {
+      echo "# OpenCode Orchestration State"
+      echo
+      echo "- Updated: $(date -Is)"
+      echo "- Agent: $AGENT"
+      echo "- Status: blocked"
+      echo "- Attempt: 0"
+      echo "- Route: none"
+      echo
+      echo "## Objective"
+      echo
+      echo "$TASK"
+      echo
+      echo "## Detail"
+      echo
+      echo "Project-local opencode.json pins agent(s) to models the data-policy ceiling excludes: ${OFFENDING//$'\n'/, }. A project cannot widen the ceiling, so routing is refused. Remediation: remove the model overrides from the project config, or declare the project 'disposable' if it genuinely holds nothing sensitive."
+    } > "$STATE_TMP" && mv "$STATE_TMP" "$STATE"
+    echo "Blocked: project opencode.json pins agents to models excluded by the ceiling: ${OFFENDING//$'\n'/, }" >&2
+    exit 3
+  fi
+fi
+
+if ((${#CANDIDATES[@]} == 0)); then
+  echo "No routes configured for agent: $AGENT" >&2
+  exit 2
+fi
+
+# De-duplicate routes while preserving preference order.
+declare -A SEEN=()
+UNIQUE=()
+for model in "${CANDIDATES[@]}"; do
+  [[ -n "${SEEN[$model]:-}" ]] && continue
+  SEEN["$model"]=1
+  UNIQUE+=("$model")
+done
+
+now() { date -Is; }
+
+# Atomic state write - preserves Handoff section if present
+write_state() {
+  local status="$1" route="$2" attempt="$3" detail="$4"
+  local handoff=""
+  
+  # Extract existing handoff if present
+  if [[ -f "$STATE" ]]; then
+    handoff=$(awk '
+/^## Handoff$/ { in_handoff=1; print; next }
+in_handoff && /^## [A-Z][a-z]+$/ { exit }
+in_handoff { print }
+' "$STATE")
+  fi
+  
+  {
+    echo "# OpenCode Orchestration State"
+    echo
+    echo "- Updated: $(now)"
+    echo "- Agent: $AGENT"
+    echo "- Status: $status"
+    echo "- Attempt: $attempt"
+    echo "- Route: $route"
+    echo
+    echo "## Objective"
+    echo
+    echo "$TASK"
+    echo
+    echo "## Detail"
+    echo
+    echo "$detail"
+    if [[ -n "$handoff" ]]; then
+      echo
+      echo "$handoff"
+    fi
+  } > "$STATE_TMP" && mv "$STATE_TMP" "$STATE"
+}
+
+# Read persisted state for recovery
+read_state() {
+  [[ -f "$STATE" ]] && cat "$STATE" || echo ""
+}
+
+# Extract field from state file
+state_field() {
+  local field="$1"
+  local content="${2:-$(read_state)}"
+  # Match both "Field: value" and "- Field: value" formats
+  echo "$content" | grep -E "^-? *$field:" | head -1 | sed -E 's/^-? *'"$field"': *//'
+}
+
+is_retryable() {
+  local file="$1"
+  grep -Eiq \
+    '429|rate.?limit|too many requests|quota|capacity|timeout|timed out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|context.?length|context.?limit|maximum.*tokens|provider.*error|temporar|unavailable|overloaded|gateway timeout|5[0-9][0-9]' \
+    "$file"
+}
+
+# Failure taxonomy comes from lib/classify.sh so the worker, the validator
+# and the circuit breaker all record the same token for the same event.
+classify_failure() {
+  if declare -F classify_failure_type >/dev/null 2>&1; then
+    classify_failure_type "$1"
+  else
+    echo "unknown"
+  fi
+}
+
+# Load circuit breaker state
+CIRCUIT_FILE="${STATE_DIR}/circuit-breaker.json"
+init_circuit_breaker() {
+  if [[ ! -f "$CIRCUIT_FILE" ]]; then
+    echo '{}' > "$CIRCUIT_FILE"
+  fi
+}
+
+# Check if route is in cooldown
+is_route_cooldown() {
+  local route="$1"
+  local now_epoch=$(date +%s)
+  python3 - "$CIRCUIT_FILE" "$route" "$now_epoch" <<'PY'
+import json, sys
+circuit_file, route, now_epoch = sys.argv[1:]
+try:
+    data = json.load(open(circuit_file))
+    entry = data.get(route, {})
+    if entry.get("cooldown_until", 0) > int(now_epoch):
+        print("true")
+    else:
+        print("false")
+except Exception:
+    print("false")
+PY
+}
+
+# Record failure for circuit breaker
+record_failure() {
+  local route="$1"
+  local failure_type="$2"
+  python3 - "${WORKER_ROOT}/lib/stateio.py" "$CIRCUIT_FILE" "$route" "$failure_type" <<'PY'
+import sys, time
+sys.path.insert(0, sys.argv[1].rsplit("/", 1)[0])
+import stateio
+
+lib, circuit_file, route, failure_type = sys.argv[1:5]
+now = int(time.time())
+
+def mutate(data):
+    entry = data.get(route, {"failures": 0, "cooldown_until": 0, "last_failure": 0})
+    entry["failures"] = entry.get("failures", 0) + 1
+    entry["last_failure"] = now
+    entry["last_failure_type"] = failure_type
+    # Exponential backoff: 30s, 60s, 120s, 300s, 600s max.
+    # Bounded by failures so a long outage cannot push the cooldown to infinity.
+    backoff = min(30 * (2 ** max(0, entry["failures"] - 1)), 600)
+    entry["cooldown_until"] = now + backoff
+    data[route] = entry
+
+stateio.locked_update(circuit_file, mutate, default=dict)
+PY
+}
+
+# Record success - reset failure count
+record_success() {
+  local route="$1"
+  python3 - "$CIRCUIT_FILE" "$route" <<'PY'
+import json, sys
+circuit_file, route = sys.argv[1:]
+try:
+    data = json.load(open(circuit_file))
+    if route in data:
+        data[route]["failures"] = 0
+        data[route]["cooldown_until"] = 0
+        with open(circuit_file, "w") as f:
+            json.dump(data, f)
+except Exception:
+    pass
+PY
+}
+
+init_circuit_breaker
+
+# Attempt counter for request/rate-limit tracking
+ATTEMPT_FILE="${STATE_DIR}/attempt-count.json"
+init_attempt_tracking() {
+  if [[ ! -f "$ATTEMPT_FILE" ]]; then
+    echo '{"total_attempts": 0, "worker_attempts": 0, "provider_failures": {}}' > "$ATTEMPT_FILE"
+  fi
+}
+
+increment_attempt() {
+  local route="$1"
+  local success="${2:-false}"
+  python3 - "${WORKER_ROOT}/lib/stateio.py" "$ATTEMPT_FILE" "$route" "$success" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1].rsplit("/", 1)[0])
+import stateio
+
+lib, attempt_file, route, success = sys.argv[1:5]
+success = (success == "true")
+
+def fresh():
+    return {"total_attempts": 0, "run_attempts": 0, "worker_attempts": 0,
+            "provider_failures": {}}
+
+def mutate(data):
+    data.setdefault("total_attempts", 0)
+    data.setdefault("worker_attempts", 0)
+    data.setdefault("provider_failures", {})
+    data["total_attempts"] += 1      # cumulative activity record, never blocks
+    data["run_attempts"] += 1       # per-invocation budget counter
+    data["worker_attempts"] += 1
+    if not success:
+        data["provider_failures"][route] = data["provider_failures"].get(route, 0) + 1
+
+stateio.locked_update(attempt_file, mutate, default=fresh)
+PY
+}
+
+# Check if worker should yield due to request budget
+check_request_budget() {
+  local max_attempts="${MAX_ATTEMPTS:-20}"
+  local max_worker_attempts="${MAX_WORKER_ATTEMPTS:-10}"
+  python3 - "$ATTEMPT_FILE" "$max_attempts" "$max_worker_attempts" <<'PY'
+import json, sys
+attempt_file, max_attempts, max_worker_attempts = sys.argv[1:]
+max_attempts = int(max_attempts)
+max_worker_attempts = int(max_worker_attempts)
+try:
+    data = json.load(open(attempt_file))
+    # Both ceilings bound a SINGLE invocation. total_attempts is a lifetime
+    # activity record and must never block: a long-lived project would
+    # otherwise lock itself out permanently after enough normal use.
+    run = data.get("run_attempts", 0)
+    if run >= max_attempts:
+        print("total_exhausted")
+    elif run >= max_worker_attempts:
+        print("worker_exhausted")
+    else:
+        print("ok")
+except Exception:
+    print("ok")
+PY
+}
+
+init_attempt_tracking
+
+# Reset the PER-RUN attempt budget at the start of every invocation.
+#
+# worker_attempts exists to stop a SINGLE run from looping forever. It was
+# being incremented cumulatively and never reset, so a project hit
+# MAX_WORKER_ATTEMPTS (default 10) after ten lifetime worker runs and then
+# refused every subsequent task with "worker_exhausted" -- a time bomb, not a
+# safety control. total_attempts stays cumulative as an activity record.
+python3 - "${WORKER_ROOT}/lib/stateio.py" "$ATTEMPT_FILE" <<'RESET_PY'
+import sys
+sys.path.insert(0, sys.argv[1].rsplit("/", 1)[0])
+import stateio
+
+lib, attempt_file = sys.argv[1:3]
+
+def fresh():
+    return {"total_attempts": 0, "run_attempts": 0, "worker_attempts": 0,
+            "provider_failures": {}}
+
+def mutate(data):
+    data.setdefault("total_attempts", 0)
+    data.setdefault("run_attempts", 0)
+    data.setdefault("provider_failures", {})
+    # Per-run budget: resets every invocation. See the note at the call site.
+    data["run_attempts"] = 0
+    data["worker_attempts"] = 0
+
+stateio.locked_update(attempt_file, mutate, default=fresh)
+RESET_PY
+
+
+# Check for resume from previous state
+RESUME_MODE=false
+SKIP_ROUTE=""
+if [[ -f "$STATE" ]]; then
+  PREV_AGENT=$(state_field "Agent")
+  PREV_STATUS=$(state_field "Status")
+  PREV_ATTEMPT=$(state_field "Attempt")
+  PREV_ROUTE=$(state_field "Route")
+  
+  # If previous attempt was route_failed or running (interrupted), we can resume
+  if [[ "$PREV_STATUS" == "route_failed" || "$PREV_STATUS" == "running" ]]; then
+    echo "[$(now)] Resuming from previous state: agent=$PREV_AGENT status=$PREV_STATUS attempt=$PREV_ATTEMPT route=$PREV_ROUTE" >&2
+    RESUME_MODE=true
+    SKIP_ROUTE="$PREV_ROUTE"
+  fi
+fi
+
+attempt=0
+for MODEL in "${UNIQUE[@]}"; do
+  # Skip routes in cooldown
+  if [[ "$(is_route_cooldown "$MODEL")" == "true" ]]; then
+    echo "[$(now)] Skipping $MODEL (in cooldown)" >&2
+    continue
+  fi
+
+  # Skip previously failed route when resuming
+  if [[ "$RESUME_MODE" == "true" && "$MODEL" == "$SKIP_ROUTE" ]]; then
+    echo "[$(now)] Skipping previously failed route $MODEL (resume mode)" >&2
+    continue
+  fi
+
+  # Check request budget
+  BUDGET=$(check_request_budget)
+  if [[ "$BUDGET" != "ok" ]]; then
+    echo "[$(now)] Request budget exhausted: $BUDGET" >&2
+    write_state "failed" "none" "$attempt" "Request budget exhausted ($BUDGET). Preserving state for recovery."
+    increment_attempt "$MODEL" "false"
+    echo "All provider routes failed for agent=$AGENT (budget: $BUDGET)" >&2
+    exit 1
+  fi
+
+  attempt=$((attempt + 1))
+  OUT="$(mktemp "${TMPDIR:-/tmp}/opencode-worker.XXXXXX")"
+
+  write_state "running" "$MODEL" "$attempt" "Trying explicit provider credential route."
+
+  echo "[$(now)] worker=$AGENT route=$MODEL attempt=$attempt/${#UNIQUE[@]}" >&2
+
+  # IMPORTANT: OpenCode 1.18.29 does not support --agent for subagents.
+  # Use --model for provider routing; specialist instructions embedded in task.
+  # Per-attempt provider timeout. Default 12m; overridable so the hang path is
+  # testable with a mock and tunable by operators. Never shorter than 5s.
+  ATTEMPT_TIMEOUT="${OPENCODE_WORKER_TIMEOUT:-12m}"
+  [[ "$ATTEMPT_TIMEOUT" =~ ^[0-9]+s?$ ]] || ATTEMPT_TIMEOUT="12m"
+  if timeout --signal=TERM --kill-after=15s "$ATTEMPT_TIMEOUT" \
+      opencode run --auto --model "$MODEL" "$TASK" \
+      >"$OUT" 2>&1; then
+
+    cat "$OUT"
+    write_state "success" "$MODEL" "$attempt" "Worker completed successfully on this credential route."
+    record_success "$MODEL"
+    increment_attempt "$MODEL" "true"
+    rm -f "$OUT"
+    exit 0
+  fi
+
+  cat "$OUT" >&2
+  FAILURE_TYPE=$(classify_failure "$OUT")
+  increment_attempt "$MODEL" "false"
+  record_failure "$MODEL" "$FAILURE_TYPE"
+
+  if is_retryable "$OUT"; then
+    write_state "route_failed" "$MODEL" "$attempt" \
+      "Retryable provider failure ($FAILURE_TYPE). Preserving objective and rotating to the next credential route."
+  else
+    write_state "route_failed" "$MODEL" "$attempt" \
+      "Worker exited nonzero ($FAILURE_TYPE). Rotating to the next configured credential route without discarding state."
+  fi
+
+  rm -f "$OUT"
+done
+
+write_state "failed" "none" "$attempt" \
+  "All configured credential routes for this agent failed. No credentials or task state were discarded."
+echo "All provider routes failed for agent=$AGENT" >&2
+exit 1
