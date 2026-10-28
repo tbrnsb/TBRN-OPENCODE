@@ -4,18 +4,9 @@
 
 One primary agent (**M.A.X.I.M.**) sizes every job and dispatches specialist subagents through per-role model failover ladders. Free models rate-limit, so the ladder retries once, cools the failing model down for ~10 minutes, and moves to the next rung.
 
-```
-~/.config/opencode/              ← live install (this repo is the source)
-├── agents/           56 generated rung agents
-├── scripts/          gen-fallbacks.py, ladder.py, validate-*
-├── lib/              health.py, log-rung.py, log-agent-issue.py, secret-scan.sh, policy.py
-├── skills/tbrn/      the @tbrn skill + references
-├── tests/            35 offline unit tests
-├── config/           opencode.json, chains.json, AGENTS.md
-└── install/install.sh
-```
+> **Start here:** [SETUP.md](SETUP.md) — credentials, install, verification, troubleshooting.
 
-## The Team (Marvel codenames, internal IDs unchanged)
+## The Team (Marvel codenames in descriptions; internal IDs unchanged)
 
 | Agent | Codename | Role |
 |-------|----------|------|
@@ -44,7 +35,8 @@ One primary agent (**M.A.X.I.M.**) sizes every job and dispatches specialist sub
 **56 agents total**: 11 × 4 rungs + 4 × 3 rungs  
 **18 visible**: 15 base rungs + mastermind's 3 fallbacks (primary, switched with Tab)  
 **38 hidden**: dispatched by id only after the previous rung fails  
-Never hand-edit generated files — edit `chains.json` and re-run the generator.
+Never hand-edit generated files — edit `chains.json` and re-run the generator.  
+Generated agents live in `config/live/agents/` (source of truth for installer).
 
 ## Dispatch & Ladder
 
@@ -66,15 +58,33 @@ Never hand-edit generated files — edit `chains.json` and re-run the generator.
 | `permission.subagent` | Mastermind whitelist (deny-first, last-match-wins). |
 | `chains.json` | Single source of truth for every role's model chain. |
 
+## Where Colors Appear
+
+Agent `color: "#RRGGBB"` (in frontmatter) renders in:
+- **Tab agent picker** — press Tab in OpenCode TUI to switch primary agents (M.A.X.I.M. rungs)
+- **Task tool list** — when the mastermind dispatches subagents
+
+**Not in `@` menu** — OpenCode v2.2.0 shows only agent IDs in `@` autocomplete (no descriptions, no colors). Core limitation.
+
+## Notifications & Archiver
+
+- **cc-alerts** (`lib/cc-alerts.py`, `lib/driver.py`) — ntfy.sh push notifications on session end/handoff
+- **session-archive** plugin (`lib/session-archive.py`) — auto-archives every session to a private git repo
+- **Archiver agent** (`L.O.G.`) — conventional commits, secret-scan, PR creation via `gh`
+
+## Browser / Web
+
+**Not enabled.** Built-in browser skill explicitly denied (`"browser": "*": "deny"` in all agent permissions). Use `websearch` tool or custom skill if needed.
+
 ## Install
 
 ```bash
-./install/install.sh --dry-run   # show what would change
+./install/install.sh --dry-run   # preview
 ./install/install.sh             # install with confirmation
 ./install/install.sh --force     # skip prompts
 ```
 
-Installs `config/{opencode.json,chains.json,AGENTS.md,orchestrator-policy.json}` + all `agents/*.md` into `~/.config/opencode`, plus worker binaries to `~/.local/bin`. `--config-dir` overrides target.
+Installs `config/live/{opencode.json,chains.json,AGENTS.md,orchestrator-policy.json}` + all `config/live/agents/*.md` into `~/.config/opencode`, plus worker binaries to `~/.local/bin`. `--config-dir` overrides target.
 
 ## Tests
 
@@ -89,16 +99,17 @@ python3 -m unittest discover -s tests -t .
 ```bash
 opencode debug agents                    # 61 entries (56 TBRN + 5 builtins), no 'explore'
 opencode plugin list                     # session-archive, superpowers
-python3 scripts/gen-fallbacks.py --check # "in sync: 56 agents"
+python3 ~/.config/opencode/scripts/gen-fallbacks.py --check
+# → "in sync: 56 agents match chains.json"
 ```
 
 ## Limitations
 
-- OpenCode 2.2.0's `@` autocomplete shows no description for agents (only skills). The Marvel codenames appear in the Tab picker and Task list, not in `@`.
+- OpenCode 2.2.0's `@` autocomplete shows no description for agents (only skills). Marvel codenames appear in Tab picker and Task list, not in `@`.
 - `opencode-validate-pins` reports 56/56 "unlabelled" under the default public ceiling (exits 0).
 - The GO worker (`scripts/opencode-worker`, `lib/classify.sh`, `lib/policy.py`) is legacy and not the current routing layer.
-- 21 shell tests in `tests/` test the legacy worker.
+- 21 shell tests in `tests/` (not present in this repo) test the legacy worker.
 
 ## License
 
-Private repository. No license file included.
+MIT — see `LICENSE`.
