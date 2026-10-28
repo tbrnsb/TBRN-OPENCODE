@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
-"""Interactive setup wizard for TBRN-OPENCODE-V2."""
+"""Interactive setup wizard for TBRN-OPENCODE-V2.
 
+Usage:
+  python3 scripts/setup-wizard.py                    # interactive menu
+  python3 scripts/setup-wizard.py --non-interactive  # headless validation only
+  python3 scripts/setup-wizard.py --set-archive /path  # set archive dir
+  python3 scripts/setup-wizard.py --validate         # validate config
+  python3 scripts/setup-wizard.py --refresh-agents   # regenerate agents
+"""
+
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -11,6 +20,9 @@ PROVIDER_FILE = CFG_DIR / "provider-routes.json"
 OPENCODE_JSON = CFG_DIR / "opencode.json"
 CHAINS_FILE = CFG_DIR / "chains.json"
 SAMPLE_ROUTE = CFG_DIR / "config" / "provider-routes.example.json"
+
+# Repo root for running scripts
+REPO_ROOT = Path(__file__).parent.parent
 
 MENU_TEXT = """TBRN-OPENCODE-V2 Interactive Setup Wizard
 ===========================================
@@ -28,25 +40,6 @@ Current state:
   Chains: {}
 """.strip()
 
-def get_choice(prompt, options, exit_val="5"):
-    for i, opt in enumerate(options, 1):
-        print(f"     {i}. {opt}")
-    while True:
-        try:
-            choice = input(f"   {prompt} ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\n   Goodbye!")
-            return exit_val
-        if choice == exit_val:
-            return exit_val
-        try:
-            idx = int(choice)
-            if 1 <= idx <= len(options):
-                return str(idx)
-        except ValueError:
-            pass
-        print("   Invalid choice. Try again.")
-
 def load_json(path, default=None):
     try:
         return json.loads(path.read_text())
@@ -60,16 +53,22 @@ def ensure_dirs():
     DB_DIR.mkdir(parents=True, exist_ok=True)
     CFG_DIR.mkdir(parents=True, exist_ok=True)
 
-def set_session_archive():
-    print("\n[1] Session Archive Directory")
-    print(f"   Current: {DB_DIR}")
-    new_path = input("   Enter new path (or press Enter to keep): ").strip()
+def set_session_archive(new_path=None):
+    """Set the session archive directory."""
     if new_path:
         new_db = Path(new_path)
         new_db.mkdir(parents=True, exist_ok=True)
-        print(f"   ✓ Would set to: {new_db}")
-    else:
-        print("   (kept existing)")
+        print(f"✓ Session archive set to: {new_db}")
+        return str(new_db)
+    print(f"Current: {DB_DIR}")
+    new_p = input("   Enter new path (or press Enter to keep): ").strip()
+    if new_p:
+        new_db = Path(new_p)
+        new_db.mkdir(parents=True, exist_ok=True)
+        print(f"✓ Would set to: {new_db}")
+        return str(new_db)
+    print("   (kept existing)")
+    return str(DB_DIR)
 
 def configure_providers():
     print("\n[2] Configure API Provider Keys")
@@ -180,15 +179,16 @@ def refresh_agents():
     import subprocess
     result = subprocess.run(
         [sys.executable, "scripts/gen-fallbacks.py", "--check", "--out", "config/live/agents", "--chains", "config/live/chains.json"],
-        cwd=CFG_DIR,
+        cwd=REPO_ROOT,
         capture_output=True, text=True,
     )
     print(result.stdout)
     if result.stderr:
         print("STDERR:", result.stderr[:200])
     print("✓ Agent regeneration complete")
+    return result.returncode == 0
 
-def main():
+def run_interactive():
     ensure_dirs()
     if SAMPLE_ROUTE.exists():
         import shutil
@@ -196,12 +196,15 @@ def main():
         print(f"✓ Copied sample provider routes to {PROVIDER_FILE}")
 
     while True:
-        print(MENU_TEXT.format(
-            DB_DIR,
-            PROVIDER_FILE.read_text()[:60] if PROVIDER_FILE.exists() else "none",
-            OPENCODE_JSON.read_text()[:60] if OPENCODE_JSON.exists() else "none",
-            CHAINS_FILE.read_text()[:60] if CHAINS_FILE.exists() else "none",
-        ))
+        try:
+            print(MENU_TEXT.format(
+                DB_DIR,
+                PROVIDER_FILE.read_text()[:60] if PROVIDER_FILE.exists() else "none",
+                OPENCODE_JSON.read_text()[:60] if OPENCODE_JSON.exists() else "none",
+                CHAINS_FILE.read_text()[:60] if CHAINS_FILE.exists() else "none",
+            ))
+        except Exception:
+            print(MENU_TEXT.format("...", "...", "...", "..."))
 
         choice = input("   Enter choice (1-5): ").strip()
         if choice == "1":
@@ -217,6 +220,29 @@ def main():
             break
         else:
             print("   Invalid choice. Enter 1-5.")
+
+def run_non_interactive(args):
+    ensure_dirs()
+    if args.set_archive:
+        set_session_archive(args.set_archive)
+    if args.validate:
+        return 0 if validate_config() else 1
+    if args.refresh_agents:
+        return 0 if refresh_agents() else 1
+    return 0
+
+def main():
+    parser = argparse.ArgumentParser(description="TBRN-OPENCODE-V2 Setup Wizard")
+    parser.add_argument("--non-interactive", action="store_true", help="Run without interactive menu")
+    parser.add_argument("--set-archive", type=str, help="Set session archive directory")
+    parser.add_argument("--validate", action="store_true", help="Validate current configuration")
+    parser.add_argument("--refresh-agents", action="store_true", help="Refresh generated agents from chains.json")
+    args = parser.parse_args()
+
+    if args.non_interactive or args.set_archive or args.validate or args.refresh_agents:
+        sys.exit(run_non_interactive(args))
+    else:
+        run_interactive()
 
 if __name__ == "__main__":
     main()
