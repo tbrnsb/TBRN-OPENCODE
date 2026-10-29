@@ -26,43 +26,45 @@ REPO_ROOT   = Path(__file__).parent.parent
 
 # ─── Role → Model Recommendations (the "secret sauce") ──────────────────
 # These are the BEST models for each role. The auto-mode will pick these.
+# Updated 2026-11-15 with latest available models
 ROLE_RECOMMENDATIONS = {
     # role: (provider_key, model_id, why)
-    "mastermind":  ("openrouter", "anthropic/claude-3.5-sonnet", "Best planning & dispatching"),
-    "planner":     ("openrouter", "anthropic/claude-3.5-sonnet", "Best at structured reasoning"),
+    "mastermind":  ("openrouter", "anthropic/claude-sonnet-latest", "Best planning & dispatching"),
+    "planner":     ("openrouter", "anthropic/claude-sonnet-latest", "Best at structured reasoning"),
     "coder":       ("nvidia",     "nvidia/nemotron-3-ultra-550b-a55b", "Best coding & reasoning"),
     "tester":      ("nvidia",     "nvidia/nemotron-3.5-lightning-30b-a3b", "Fast, thorough validation"),
     "debugger":    ("nvidia",     "nvidia/nemotron-3-ultra-550b-a55b", "Deep root-cause analysis"),
-    "critic":      ("openrouter", "google/gemini-2.5-flash",       "Sharp critique, different family"),
-    "designer":    ("openrouter", "anthropic/claude-3.5-sonnet",   "Best UI/UX taste"),
+    "critic":      ("openrouter", "google/gemini-3.8-flash",       "Sharp critique, different family"),
+    "designer":    ("openrouter", "anthropic/claude-sonnet-latest", "Best UI/UX taste"),
     "copywriter":  ("openrouter", "openai/gpt-oss-120b",           "Natural, human-like writing"),
-    "explorer":    ("groq",       "llama-3.3-70b-versatile",       "Fast repo exploration"),
-    "code-reviewer":("openrouter", "anthropic/claude-3.5-sonnet",  "Thorough code review"),
-    "archiver":    ("groq",       "llama-3.1-8b-instant",          "Fast commits & logs"),
-    "security-reviewer": ("openrouter", "anthropic/claude-3.5-sonnet", "Security expertise"),
+    "explorer":    ("groq",       "openai/gpt-oss-120b",           "Fast repo exploration"),
+    "code-reviewer":("openrouter", "anthropic/claude-sonnet-latest", "Thorough code review"),
+    "archiver":    ("groq",       "openai/gpt-oss-20b",            "Fast commits & logs"),
+    "security-reviewer": ("openrouter", "anthropic/claude-sonnet-latest", "Security expertise"),
     "final-verifier":    ("nvidia",     "nvidia/nemotron-3-ultra-550b-a55b", "Final acceptance"),
-    "ui-reviewer":       ("openrouter", "anthropic/claude-3.5-sonnet", "UI critique"),
-    "general":           ("openrouter", "google/gemini-2.5-flash",        "General purpose"),
+    "ui-reviewer":       ("openrouter", "anthropic/claude-sonnet-latest", "UI critique"),
+    "general":           ("openrouter", "google/gemini-3.8-flash",        "General purpose"),
 }
 
 # ─── Provider Presets ───────────────────────────────────────────────────
 PRESETS = {
     "nvidia":     ("NVIDIA (Free Tier)",       "https://build.nvidia.com",
-                   [("nvidia/nemotron-3-ultra-550b-a55b", "Nemotron 3 Ultra — best reasoning/coding"),
-                    ("nvidia/nemotron-3.5-lightning-30b-a3b", "Nemotron 3.5 Lightning — fast, cheap")],
+                   [("nvidia/nemotron-3-ultra-550b-a55b", "Nemotron 3 Ultra — best reasoning/coding ⭐"),
+                    ("nvidia/nemotron-3.5-lightning-30b-a3b", "Nemotron 3.5 Lightning — fast, cheap"),
+                    ("nvidia/nemotron-3.5-super-vl-120b-a12b", "Nemotron 3.5 Super VL — vision + reasoning")],
                    "nemotron", "private-safe"),
     "openrouter": ("OpenRouter (Many Models)",  "https://openrouter.ai/keys",
-                   [("anthropic/claude-3.5-sonnet", "Claude 3.5 Sonnet — best all-rounder ⭐"),
-                    ("google/gemini-2.5-flash",     "Gemini 2.5 Flash — fast, multimodal"),
-                    ("openai/gpt-oss-120b",         "GPT-OSS 120B — open-weight, strong")],
+                   [("anthropic/claude-sonnet-latest", "Claude Sonnet — best all-rounder ⭐"),
+                    ("google/gemini-3.8-flash",        "Gemini 3.8 Flash — fast, multimodal"),
+                    ("openai/gpt-oss-120b",            "GPT-OSS 120B — open-weight, strong")],
                    "openrouter", "training-optin"),
     "groq":       ("Groq (Ultra-Fast)",         "https://console.groq.com/keys",
-                   [("llama-3.3-70b-versatile",  "Llama 3.3 70B — versatile, fast"),
-                    ("llama-3.1-8b-instant",     "Llama 3.1 8B — lightning fast")],
-                   "mistral", "training-optin"),
+                   [("openai/gpt-oss-120b",       "GPT-OSS 120B — versatile, fast ⭐"),
+                    ("openai/gpt-oss-20b",         "GPT-OSS 20B — lightning fast")],
+                   "openrouter", "training-optin"),
     "anthropic":  ("Anthropic Direct",          "https://console.anthropic.com/settings/keys",
-                   [("anthropic/claude-3.5-sonnet", "Claude 3.5 Sonnet — best all-rounder ⭐"),
-                    ("anthropic/claude-3.5-haiku",  "Claude 3.5 Haiku — fast, cheap")],
+                   [("anthropic/claude-sonnet-latest", "Claude Sonnet — best all-rounder ⭐"),
+                    ("anthropic/claude-haiku-latest",  "Claude Haiku — fast, cheap")],
                    "openrouter", "training-optin"),
     "custom":     ("Custom / Local (Ollama…)",  "",
                    [], "custom", "private-safe"),
@@ -83,7 +85,7 @@ def hr(c="─"): print(c * 60)
 
 def banner():
     print("\n" + "═" * 60)
-    print("   ████████╗██╗  ██╗███████╗    ██╗  ██╗██╗   ██╗██╗██████╗")
+    print("   ████████╗██╗  ██╗███████╗    ██╗  ██╗██║   ██╗██╗██████╗")
     print("   ╚══██╔══╝██║  ██║██╔════╝    ██║  ██║██║   ██║██║██╔══██╗")
     print("      ██║   ███████║█████╗      ███████║██║   ██║██║██████╔╝")
     print("      ██║   ██╔══██║██╔══╝      ██╔══██║╚██╗ ██╔╝██║██╔═══╝")
@@ -157,9 +159,9 @@ def do_auto():
         ("openrouter", "OpenRouter", "One key → Claude, Gemini, GPT-OSS, etc. ⭐ Recommended"),
         ("nvidia",     "NVIDIA",     "Free tier, Nemotron models — great for coding"),
         ("anthropic",  "Anthropic",  "Direct Claude access — best quality, paid"),
-        ("groq",       "Groq",       "Ultra-fast Llama — speed over quality"),
+        ("groq",       "Groq",       "Ultra-fast GPT-OSS — speed over quality"),
     ]
-    prim = pick(primary_opts, "Primary provider")
+    prim = pick(primary_opts, "Choose provider")
     if not prim: return
     primary_key = prim[0]
     primary_pre = PRESETS[primary_key]
@@ -170,7 +172,7 @@ def do_auto():
     print("  Do you have a SECONDARY provider for fallback / variety?")
     print("  (e.g., Groq for speed, or NVIDIA for free tier)\n")
     secondary_opts = [o for o in primary_opts if o[0] != primary_key] + [("none", "None", "Skip secondary")]
-    sec = pick(secondary_opts, "Secondary provider")
+    sec = pick(secondary_opts, "Choose provider")
     secondary_key = sec[0] if sec and sec[0] != "none" else None
     
     hr()
@@ -380,7 +382,7 @@ def do_view():
 
 def do_recommendations():
     """Show the model recommendations table."""
-    hr(); print("  MODEL RECOMMENDATIONS PER ROLE"); hr()
+    hr(); print("  MODEL RECOMMENDATIONS PER ROLE (2026-11-15)"); hr()
     print(f"  {'Role':<18} {'Provider':<12} {'Model':<40} Why")
     print("  " + "─"*80)
     for role, (prov, model, why) in ROLE_RECOMMENDATIONS.items():

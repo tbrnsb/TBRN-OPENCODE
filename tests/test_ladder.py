@@ -92,7 +92,7 @@ class ParseAuthorModelsTests(unittest.TestCase):
 
     def test_only_latest_section_counts(self):
         path = self.state(
-            "## TURN 1\n\n### author_models\n- google/gemini-3.7-flash\n\n"
+            "## TURN 1\n\n### author_models\n- google/gemini-3.8-flash\n\n"
             "## TURN 2\n\n### author_models\n- opencode/glm-5.3-flash-free\n")
         self.assertEqual(ladder.parse_author_models(path),
                          ["opencode/glm-5.3-flash-free"])
@@ -155,7 +155,7 @@ class PickCriticTests(unittest.TestCase):
             "- opencode/glm-5.3-flash-free\n"
             "- nvidia/nvidia/nemotron-3-ultra-550b-a55b\n"
             "- opencode/deepseek-v4.1-flash-free\n"
-            "- google/gemini-3.7-flash\n")
+            "- google/gemini-3.8-flash\n")
         self.assertEqual(got.returncode, 4)
         self.assertIn("escalate", got.stderr)
         self.assertEqual(got.stdout.count("refused"), 4)
@@ -169,7 +169,7 @@ class PickCriticTests(unittest.TestCase):
         got = self.pick(
             "### author_models\n- opencode/glm-5.3-flash-free\n"
             "- nvidia/nvidia/nemotron-3-ultra-550b-a55b\n"
-            "- opencode/deepseek-v4.1-flash-free\n- google/gemini-3.7-flash\n\n"
+            "- opencode/deepseek-v4.1-flash-free\n- google/gemini-3.8-flash\n\n"
             "## NEXT TURN\n\n### author_models\n- opencode/deepseek-v4.1-flash-free\n")
         self.assertEqual(got.returncode, 0, got.stderr)
         self.assertIn("glm-5.3-flash-free", got.stdout)
