@@ -19,17 +19,23 @@ This installs:
 ## Setup Wizard (Menu-Driven)
 
 ```bash
-python3 scripts/setup-wizard.py          # interactive menu
-python3 scripts/setup-wizard.py --non-interactive --validate         # validate only
-python3 scripts/setup-wizard.py --non-interactive --refresh-agents   # regenerate agents
-python3 scripts/setup-wizard.py --non-interactive --set-archive /path/to/archive  # set archive dir
+python3 scripts/setup-wizard.py          # interactive menu (recommended)
+python3 scripts/setup-wizard.py --auto   # agent-driven: asks 3 questions, configures ALL roles
+python3 scripts/setup-wizard.py --quick  # 3-step quick setup
+python3 scripts/setup-wizard.py --validate   # check config
+python3 scripts/setup-wizard.py --refresh-agents   # regenerate agents
+python3 scripts/setup-wizard.py --recommendations  # show best model per role
 ```
 
 The interactive wizard provides a menu to:
-- **Set Session Archive Directory** — defaults to `~/.local/share/session-archive/global-sessions/`
-- **Configure API Provider Keys** — add/edit NVIDIA, OpenRouter, Groq, Anthropic routes
-- **Validate Current Configuration** — checks V2 config, provider routes, chains
+- **Auto-Configure** — asks 3 questions, picks optimal models for all 15 roles
+- **Quick Setup** — 1 provider, 1 model, done in 30 seconds
+- **Add / Edit API Provider** — add NVIDIA, OpenRouter, Groq, Anthropic, Custom
+- **Set Session Archive Directory** — defaults to `~/.local/share/session-archive/sulav-global-sessions/`
+- **Validate Configuration** — checks V2 config, provider routes, chains
 - **Refresh Generated Agents** — regenerates 56 agents from `chains.json`
+- **View Current Provider Routes** — list configured providers with details
+- **Show Recommendations** — best model for each role (table)
 
 ## Model Configuration (Required)
 
@@ -45,8 +51,9 @@ cp ~/.config/opencode/provider-routes.example.json ~/.config/opencode/provider-r
 | Provider | Models Used | Get Key At |
 |----------|-------------|------------|
 | NVIDIA | `nemotron-3-ultra-550b-a55b`, `nemotron-3.5-lightning-30b-a3b` | https://build.nvidia.com |
-| OpenRouter | `google/gemini-2.5-flash`, `openai/gpt-oss-120b` | https://openrouter.ai/keys |
-| Groq | `llama-3.3-70b-versatile` | https://console.groq.com/keys |
+| OpenRouter | `google/gemini-3.8-flash`, `openai/gpt-oss-120b`, `anthropic/claude-sonnet-latest` | https://openrouter.ai/keys |
+| Groq | `openai/gpt-oss-120b`, `openai/gpt-oss-20b` | https://console.groq.com/keys |
+| Anthropic | `anthropic/claude-sonnet-latest`, `anthropic/claude-haiku-latest` | https://console.anthropic.com/settings/keys |
 
 ### Provider Routes Schema
 
@@ -80,7 +87,27 @@ Agent `color: "#RRGGBB"` (in frontmatter) is rendered in:
 - **Tab agent picker** — press Tab in OpenCode TUI to switch primary agents (M.A.X.I.M. rungs)
 - **Task tool list** — when the mastermind dispatches subagents, the list shows colors
 
-**Not in `@` menu** — OpenCode v2.2.0 shows only agent IDs in `@` autocomplete (no descriptions, no colors). This is a core limitation.
+**Not in `@` menu** — OpenCode v2.2.1 shows only agent IDs in `@` autocomplete (no descriptions, no colors). This is a core limitation.
+
+## Session Archive
+
+Sessions are auto-archived to a **single private git repo** at:
+```
+~/.local/share/session-archive/sulav-global-sessions/
+```
+
+This repo contains:
+- `sessions/YYYY/MM/*.md` — global sessions (all projects not matched to a specific repo)
+- `daily-companion/sessions/YYYY/MM/*.md` — flutter_application_1 sessions
+- `opencode-global-orchestrator/sessions/YYYY/MM/*.md` — orchestrator repo sessions
+- `runner-audio-app/sessions/YYYY/MM/*.md` — runner_audio_app sessions
+- `DISPATCHES.md` — shared dispatch log (all projects)
+- `agents-issue/ISSUES.md` — shared issue log (all projects)
+- `INDEX.md`, `MEMORY.md`, `SESSIONS.txt` — index and memory files
+
+**Remote:** `https://github.com/tbrnsb/sulav-global-sessions.git` (private)
+
+The archiver agent (`L.O.G.`) runs `session-archive.py` on session end; `driver.py` runs it on handoff. Commits are conventional, secret-scanned, and pushed automatically.
 
 ## Notifications (cc-alerts)
 
@@ -103,7 +130,7 @@ Files: `lib/cc-alerts.py` (sender), `lib/driver.py` (hooks into mastermind hando
 ## Archiver / GitHub
 
 - **Archiver agent** (`L.O.G.`) handles conventional commits, secret scanning, session logs, PR creation
-- **session-archive plugin** (`lib/session-archive.py`) auto-archives every session to a private git repo at `~/.local/share/session-archive/global-sessions/`
+- **session-archive plugin** (`lib/session-archive.py`) auto-archives every session to the private git repo
 - **GitHub CLI** (`gh`) used for PR creation — must be authenticated (`gh auth status`)
 
 No GitHub Actions/workflows in this repo; the archiver runs at commit time.
@@ -164,10 +191,11 @@ python3 scripts/gen-fallbacks.py --check --out config/live/agents --chains confi
 | Issue | Fix |
 |-------|-----|
 | `opencode debug agents` shows `explore` | Ensure `opencode.json` has `"agents": {"explore": {"disabled": true}}` |
-| Colors not showing | Terminal must support 24-bit color; v2.2.0 requires hex `#RRGGBB` |
+| Colors not showing | Terminal must support 24-bit color; v2.2.1 requires hex `#RRGGBB` |
 | Critic refuses review | Check `author_models` in `.orchestrator/STATE.md` — critic must differ by family |
 | Model not found | Verify model ID in `chains.json` matches provider-routes exactly |
 | Permission denied dispatching | Mastermind whitelist only allows the 14 TBRN roles + `*-2/3/last` globs |
+| Sessions not archiving | Ensure `session-archive` plugin is in `opencode.json` plugins array |
 
 ## License
 

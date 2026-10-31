@@ -17,7 +17,7 @@ from pathlib import Path
 
 # ─── Paths ──────────────────────────────────────────────────────────────
 CFG_DIR     = Path.home() / ".config" / "opencode"
-DB_DIR      = Path.home() / ".local" / "share" / "session-archive" / "global-sessions"
+DB_DIR      = Path.home() / ".local" / "share" / "session-archive" / "sulav-global-sessions"
 PROVIDER_F  = CFG_DIR / "provider-routes.json"
 OPENCODE_J  = CFG_DIR / "opencode.json"
 CHAINS_F    = CFG_DIR / "chains.json"
