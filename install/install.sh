@@ -76,6 +76,10 @@ declare -A FILES=(
   ["${REPO_ROOT}/lib/policy.py"]="${LIB_DIR}/policy.py"
   ["${REPO_ROOT}/lib/stateio.py"]="${LIB_DIR}/stateio.py"
   ["${REPO_ROOT}/lib/classify.sh"]="${LIB_DIR}/classify.sh"
+  # Preview/notification/archive helpers spawned BY the OpenCode plugins:
+  # both must live in BIN_DIR because the plugins spawn them by absolute path.
+  ["${REPO_ROOT}/lib/session-archive.py"]="${BIN_DIR}/session-archive.py"
+  ["${REPO_ROOT}/lib/agent-finished-notify.py"]="${BIN_DIR}/agent-finished-notify.py"
 )
 
 # Agent rung files from the synced live mirror (source: sync/tbrn-* branches).
@@ -83,6 +87,14 @@ declare -A AGENT_FILES=()
 shopt -s nullglob
 for src in "${REPO_ROOT}"/config/live/agents/*.md; do
   AGENT_FILES["${src}"]="${CONFIG_DIR}/agents/$(basename "$src")"
+done
+shopt -u nullglob
+
+# V2 plugins (auto-loaded from the plugin directory at startup).
+declare -A PLUGIN_FILES=()
+shopt -s nullglob
+for src in "${REPO_ROOT}"/plugins/*.js; do
+  PLUGIN_FILES["${src}"]="${CONFIG_DIR}/plugins/$(basename "$src")"
 done
 shopt -u nullglob
 
@@ -183,6 +195,10 @@ main() {
     dst="${FILES[$src]}"
     echo "  $src -> $dst"
   done
+  for src in "${!PLUGIN_FILES[@]}"; do
+    dst="${PLUGIN_FILES[$src]}"
+    echo "  $src -> $dst"
+  done
   echo
 
   # Confirmation
@@ -229,6 +245,22 @@ main() {
   fi
   echo
 
+  # Helper scripts spawned BY the V2 plugins. Both must be executable in
+  # BIN_DIR: the plugins spawn them by absolute path (~/.local/bin/...).
+  log "Installing plugin helper scripts..."
+  install_file "${REPO_ROOT}/lib/session-archive.py" "${BIN_DIR}/session-archive.py"
+  make_executable "${BIN_DIR}/session-archive.py"
+  install_file "${REPO_ROOT}/lib/agent-finished-notify.py" "${BIN_DIR}/agent-finished-notify.py"
+  make_executable "${BIN_DIR}/agent-finished-notify.py"
+  echo
+
+  # V2 plugins — auto-loaded from ${CONFIG_DIR}/plugins/ at OpenCode startup.
+  log "Installing V2 plugins..."
+  for src in "${!PLUGIN_FILES[@]}"; do
+    install_file "$src" "${PLUGIN_FILES[$src]}"
+  done
+  echo
+
   # Verify installation
   log "Verifying installation..."
   for src in "${!FILES[@]}"; do
@@ -238,6 +270,12 @@ main() {
       if [[ "$dst" == *.json ]]; then
         validate_json "$dst"
       fi
+    fi
+  done
+  for src in "${!PLUGIN_FILES[@]}"; do
+    dst="${PLUGIN_FILES[$src]}"
+    if [[ "$DRY_RUN" == "false" ]]; then
+      [[ -f "$dst" ]] || err "Installation verification failed: $dst not found"
     fi
   done
   log "Installation verification passed"

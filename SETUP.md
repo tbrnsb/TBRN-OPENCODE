@@ -109,6 +109,37 @@ This repo contains:
 
 The archiver agent (`L.O.G.`) runs `session-archive.py` on session end; `driver.py` runs it on handoff. Commits are conventional, secret-scanned, and pushed automatically.
 
+## V2 Plugins (session archive + agent notifications)
+
+Two local plugins live in `~/.config/opencode/plugins/` and auto-load at
+OpenCode startup (no config entry needed — the directory is scanned):
+
+| Plugin | What it does |
+|--------|--------------|
+| `session-archive.js` | On terminal execution events, spawns `~/.local/bin/session-archive.py` after a 20s debounce → Markdown transcript + `chore: archive` commit + push to the private archive repo. |
+| `agent-finished.js` | On terminal execution events, spawns `~/.local/bin/agent-finished-notify.py` → desktop notification `"<agent> has finished in <time>, consuming <tokens> tokens"` for **subagent** sessions (top-level sessions are skipped; `AGENT_NOTIFY_ALL=1` includes them). |
+
+**Event names (important):** OpenCode v2.2.5 emits
+`session.execution.succeeded` / `.failed` / `.interrupted` when a run ends —
+it does **not** emit `session.idle` any more (an earlier revision of these
+plugins filtered on `session.idle` and silently never fired). The plugins
+match the new names and keep `session.idle` as a legacy fallback.
+
+**Database note:** v2.2.x writes live sessions to the `session_v2` /
+`session_message` tables (the old `session` table stops receiving rows). Both
+helper scripts prefer `session_v2` and fall back to `session`.
+
+Controls (environment):
+
+```bash
+SESSION_ARCHIVE=0        # disable archiving entirely
+SESSION_ARCHIVE_PUSH=0   # archive locally, never git push
+AGENT_NOTIFY=0           # disable notifications
+AGENT_NOTIFY_ALL=1       # also notify for top-level (non-subagent) sessions
+```
+
+Notify-dedupe state lives at `~/.cache/tbrn.oc-plugin/notified.json`.
+
 ## Notifications (cc-alerts)
 
 Phone/desktop notifications via ntfy.sh:
@@ -165,11 +196,15 @@ TBRN-OPENCODE/
 │   ├── log-agent-issue.py         # Failed chain archive
 │   ├── secret-scan.sh             # Blocks commits with secrets
 │   ├── policy.py                  # Data-policy ceiling enforcement
-│   ├── session-archive.py         # Session archival to private repo
+│   ├── session-archive.py         # Session archival to private repo (spawned by session-archive.js)
+│   ├── agent-finished-notify.py   # Desktop notification on agent finish (spawned by agent-finished.js)
 │   ├── cc-alerts.py               # ntfy.sh notifications
 │   ├── driver.py                  # Mastermind handoff hook
 │   ├── classify.sh                # Legacy worker classification
 │   └── stateio.py                 # Legacy worker state
+├── plugins/                       # V2 plugins (auto-loaded from ~/.config/opencode/plugins/)
+│   ├── session-archive.js         # → spawns lib/session-archive.py on terminal events
+│   └── agent-finished.js          # → spawns lib/agent-finished-notify.py for subagent notifications
 ├── skills/tbrn/                   # @tbrn skill + references
 ├── tests/test_ladder.py           # 35 offline tests
 ├── docs/                          # SYSTEM-BRIEF, architecture, etc.

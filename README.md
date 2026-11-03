@@ -48,11 +48,11 @@ Generated agents live in `config/live/agents/` (source of truth for installer).
 - Caps: 3 debug loops/issue, 3 critic rounds (pass=9). Critic must differ by family from every model in `author_models` (Nemotron NIM/Zen = one family).
 - Every dispatch logged by `lib/log-rung.py`; failed chains recorded by `lib/log-agent-issue.py`.
 
-## Config Surface (v2.2.0 native keys)
+## Config Surface (v2.x native keys)
 
 | Key | Purpose |
 |-----|---------|
-| `plugins` | V2 key. Pins Superpowers v7.0.1 + session-archive. |
+| `plugins` | V2 key. Pins Superpowers v7.0.1. Local plugins (`plugins/*.js`) auto-load from `~/.config/opencode/plugins/`. |
 | `agents.explore.disabled` | Disables built-in `explore`; `explorer` replaces it. |
 | `color: "#RRGGBB"` | Required by v2.2.0 on every agent; theme names dropped. |
 | `permission.subagent` | Mastermind whitelist (deny-first, last-match-wins). |
@@ -68,8 +68,14 @@ Agent `color: "#RRGGBB"` (in frontmatter) renders in:
 
 ## Notifications & Archiver
 
+- **V2 plugins** (`plugins/`) — auto-loaded from `~/.config/opencode/plugins/`:
+  - `session-archive.js` → spawns `lib/session-archive.py` on terminal execution
+    events (`session.execution.succeeded/.failed/.interrupted`; `session.idle` is
+    a dead legacy name in v2.2.5) → Markdown transcript + commit + push.
+  - `agent-finished.js` → spawns `lib/agent-finished-notify.py` → desktop
+    notification when a **subagent** finishes (`AGENT_NOTIFY_ALL=1` includes
+    top-level; `AGENT_NOTIFY=0` disables).
 - **cc-alerts** (`lib/cc-alerts.py`, `lib/driver.py`) — ntfy.sh push notifications on session end/handoff
-- **session-archive** plugin (`lib/session-archive.py`) — auto-archives every session to a private git repo
 - **Archiver agent** (`L.O.G.`) — conventional commits, secret-scan, PR creation via `gh`
 
 ## Browser / Web
@@ -98,7 +104,7 @@ python3 -m unittest discover -s tests -t .
 
 ```bash
 opencode debug agents                    # 61 entries (56 TBRN + 5 builtins), no 'explore'
-opencode plugin list                     # session-archive, superpowers
+opencode plugin list                     # agent-finished, session-archive, superpowers
 python3 ~/.config/opencode/scripts/gen-fallbacks.py --check
 # → "in sync: 56 agents match chains.json"
 ```

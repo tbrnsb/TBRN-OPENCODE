@@ -149,6 +149,51 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    """Check if a table exists in the database."""
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table,)
+    ).fetchone()
+    return row is not None
+
+
+def _session_table(conn: sqlite3.Connection) -> str:
+    """Return the session table name (V2 preferred over V1)."""
+    if _table_exists(conn, "session_v2"):
+        return "session_v2"
+    return "session"
+
+
+def _message_table(conn: sqlite3.Connection) -> str:
+    """Return the message table name (V2 preferred over V1)."""
+    if _table_exists(conn, "session_message"):
+        return "session_message"
+    return "message"
+
+
+def _is_v2_schema(conn: sqlite3.Connection) -> bool:
+    """Detect if we're using V2 schema."""
+    return _table_exists(conn, "session_v2") and _table_exists(conn, "session_message")
+
+
+def _session_schema_for(conn: sqlite3.Connection, session_id: str) -> dict:
+    """Detect which schema a specific session uses.
+    
+    Returns: {"v2": bool, "session": str, "message": str}
+    A session is V2 if it has a row in session_v2 (and session_message exists).
+    """
+    v2_tables = _table_exists(conn, "session_v2") and _table_exists(conn, "session_message")
+    if not v2_tables:
+        return {"v2": False, "session": "session", "message": "message"}
+    
+    # Check if this specific session is in V2 tables
+    row = conn.execute("SELECT 1 FROM session_v2 WHERE id = ?", (session_id,)).fetchone()
+    if row:
+        return {"v2": True, "session": "session_v2", "message": "session_message"}
+    return {"v2": False, "session": "session", "message": "message"}
+
+
 def git_root() -> Path:
     """The single git repository: the only directory git commands run in.
 
@@ -232,10 +277,11 @@ def repo_from_parent_chain(conn: sqlite3.Connection, row) -> str | None:
     parent_id = _row_get(row, "parent_id")
     seen: set[str] = set()
     depth = 0
+    table = _session_table(conn)
     while parent_id and depth < 10 and parent_id not in seen:
         seen.add(parent_id)
         parent = conn.execute(
-            "SELECT id, project_id, directory, title, parent_id FROM session WHERE id = ?",
+            f"SELECT id, project_id, directory, title, parent_id FROM {table} WHERE id = ?",
             (parent_id,),
         ).fetchone()
         if parent is None:
@@ -283,26 +329,37 @@ def repo_from_task_prompt(conn: sqlite3.Connection, session_id: str) -> str | No
     machine belongs to the global bucket, not to whichever project it happened
     to name most often.
     """
-    row = conn.execute(
-        """
-        SELECT p.data AS d
-        FROM part p
-        JOIN message m ON m.id = p.message_id
-        WHERE p.session_id = ?
-          AND json_extract(m.data, '$.role') = 'user'
-          AND json_extract(p.data, '$.type') = 'text'
-        ORDER BY m.time_created ASC, p.time_created ASC, p.id ASC
-        LIMIT 1
-        """,
-        (session_id,),
-    ).fetchone()
-    if row is None:
-        return None
-
-    try:
-        text = (json.loads(row["d"]) or {}).get("text") or ""
-    except (json.JSONDecodeError, TypeError):
-        return None
+    if _session_schema_for(conn, session_id)["v2"]:
+        row = conn.execute(
+            "SELECT data FROM session_message WHERE session_id = ? AND type = 'user' ORDER BY seq ASC LIMIT 1",
+            (session_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            text = (json.loads(row["data"]) or {}).get("text") or ""
+        except (json.JSONDecodeError, TypeError):
+            return None
+    else:
+        row = conn.execute(
+            """
+            SELECT p.data AS d
+            FROM part p
+            JOIN message m ON m.id = p.message_id
+            WHERE p.session_id = ?
+              AND json_extract(m.data, '$.role') = 'user'
+              AND json_extract(p.data, '$.type') = 'text'
+            ORDER BY m.time_created ASC, p.time_created ASC, p.id ASC
+            LIMIT 1
+            """,
+            (session_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            text = (json.loads(row["d"]) or {}).get("text") or ""
+        except (json.JSONDecodeError, TypeError):
+            return None
     # A scope statement is at the start; cap so trailing prose cannot vote.
     prompt = text[:2500]
     lowered = prompt.lower()
@@ -363,23 +420,31 @@ def slugify(title: str, limit: int = 48) -> str:
 
 
 def text_part_count_and_max(conn: sqlite3.Connection, session_id: str) -> tuple[int, int]:
-    """(count, newest time_created) over this session's text parts.
+    """(count, newest time_created) over this session's text content.
 
-    The cheap change-detector: a full render of a 2000-part session costs
-    ~160 ms and allocates the whole transcript. Uses a LIKE prefilter rather
-    than json_extract, which measured 95 ms for the same session because
-    SQLite ran the JSON function per row. The pattern matches the stored JSON
-    exactly (verified: 12,239 text parts both ways, zero false positives).
+    V1: text parts. V2: session_message rows (any message can add text, so a
+    message-row count is the cheap change detector).
     """
-    row = conn.execute(
-        """
-        SELECT COUNT(*), COALESCE(MAX(time_created), 0)
-        FROM part
-        WHERE session_id = ?
-          AND data LIKE '%"type":"text"%'
-        """,
-        (session_id,),
-    ).fetchone()
+    sc = _session_schema_for(conn, session_id)
+    if sc["v2"]:
+        row = conn.execute(
+            """
+            SELECT COUNT(*), COALESCE(MAX(time_created), 0)
+            FROM session_message
+            WHERE session_id = ?
+            """,
+            (session_id,),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT COUNT(*), COALESCE(MAX(time_created), 0)
+            FROM part
+            WHERE session_id = ?
+              AND data LIKE '%"type":"text"%'
+            """,
+            (session_id,),
+        ).fetchone()
     return int(row[0]), int(row[1])
 
 
@@ -399,19 +464,52 @@ def render_session(
     title = _row_get(row, "title") or "Untitled session"
     stats = {"messages": 0, "chars": 0, "redactions": 0}
 
-    # `role` lives in message.data (JSON), not as a column.
-    parts = conn.execute(
-        """
-        SELECT p.data AS part_data,
-               json_extract(m.data, '$.role') AS role
-        FROM part p
-        JOIN message m ON m.id = p.message_id
-        WHERE p.session_id = ?
-          AND json_extract(p.data, '$.type') = 'text'
-        ORDER BY m.time_created ASC, p.time_created ASC, p.id ASC
-        """,
-        (session_id,),
-    ).fetchall()
+    sc = _session_schema_for(conn, session_id)
+    if sc["v2"]:
+        messages = conn.execute(
+            """
+            SELECT type, data, seq, time_created
+            FROM session_message
+            WHERE session_id = ?
+            ORDER BY seq ASC
+            """,
+            (session_id,),
+        ).fetchall()
+        parts = []
+        for msg in messages:
+            try:
+                data = json.loads(msg["data"]) or {}
+            except (json.JSONDecodeError, TypeError):
+                continue
+            role = msg["type"] or "unknown"
+            if role == "user":
+                text = data.get("text") or ""
+                if text.strip():
+                    parts.append({"part_data": json.dumps({"text": text}), "role": role})
+            elif role == "assistant":
+                content = data.get("content") or []
+                texts = [
+                    item.get("text", "")
+                    for item in content
+                    if isinstance(item, dict) and item.get("type") == "text"
+                ]
+                text = "\n".join(t for t in texts if t.strip())
+                if text.strip():
+                    parts.append({"part_data": json.dumps({"text": text}), "role": role})
+    else:
+        # `role` lives in message.data (JSON), not as a column.
+        parts = conn.execute(
+            """
+            SELECT p.data AS part_data,
+                   json_extract(m.data, '$.role') AS role
+            FROM part p
+            JOIN message m ON m.id = p.message_id
+            WHERE p.session_id = ?
+              AND json_extract(p.data, '$.type') = 'text'
+            ORDER BY m.time_created ASC, p.time_created ASC, p.id ASC
+            """,
+            (session_id,),
+        ).fetchall()
 
     lines: list[str] = []
     current_role = None
@@ -493,8 +591,9 @@ def session_filename(conn: sqlite3.Connection, row, session_id: str) -> str:
     created = datetime.fromtimestamp(
         (_row_get(row, "time_created") or 0) / 1000, tz=timezone.utc
     )
+    table = _session_table(conn)
     seq = conn.execute(
-        "SELECT COUNT(*) FROM session WHERE project_id IS ? AND time_created < ?",
+        f"SELECT COUNT(*) FROM {table} WHERE project_id IS ? AND time_created < ?",
         (_row_get(row, "project_id"), _row_get(row, "time_created")),
     ).fetchone()[0] + 1
     return (
@@ -564,21 +663,39 @@ def fmt_dispatch_ts(ms: int | None) -> str:
 
 def fetch_session_tools(conn: sqlite3.Connection, session_id: str) -> list[str]:
     """Distinct tool names invoked, in first-use order. Names only."""
-    rows = conn.execute(
-        """
-        SELECT json_extract(data, '$.tool') AS tool
-        FROM part
-        WHERE session_id = ? AND json_extract(data, '$.type') = 'tool'
-        ORDER BY time_created ASC, id ASC
-        """,
-        (session_id,),
-    ).fetchall()
     seen: list[str] = []
-    for r in rows:
-        name = r["tool"]
-        if not name or name in seen:
-            continue
-        seen.append(name)
+    sc = _session_schema_for(conn, session_id)
+    if sc["v2"]:
+        rows = conn.execute(
+            "SELECT data FROM session_message WHERE session_id = ? AND type = 'assistant' ORDER BY seq ASC",
+            (session_id,),
+        ).fetchall()
+        for r in rows:
+            try:
+                data = json.loads(r["data"]) or {}
+            except (json.JSONDecodeError, TypeError):
+                continue
+            for item in data.get("content") or []:
+                if not isinstance(item, dict) or item.get("type") != "tool":
+                    continue
+                name = item.get("name")
+                if name and name not in seen:
+                    seen.append(name)
+    else:
+        rows = conn.execute(
+            """
+            SELECT json_extract(data, '$.tool') AS tool
+            FROM part
+            WHERE session_id = ? AND json_extract(data, '$.type') = 'tool'
+            ORDER BY time_created ASC, id ASC
+            """,
+            (session_id,),
+        ).fetchall()
+        for r in rows:
+            name = r["tool"]
+            if not name or name in seen:
+                continue
+            seen.append(name)
     # Stored lowercase ("bash"); display capitalized, as humans write it.
     return [t[:1].upper() + t[1:] for t in seen]
 
@@ -590,20 +707,36 @@ def fetch_model_pathway(conn: sqlite3.Connection, session_id: str) -> tuple[list
     single-model run reports 0 switches and the pathway line reads
     `models: a, b (1 switch)`.
     """
-    rows = conn.execute(
-        """
-        SELECT json_extract(data, '$.modelID') AS model
-        FROM message
-        WHERE session_id = ? AND json_extract(data, '$.role') = 'assistant'
-        ORDER BY time_created ASC, id ASC
-        """,
-        (session_id,),
-    ).fetchall()
     models: list[str] = []
-    for r in rows:
-        m = r["model"]
-        if m and (not models or models[-1] != m):
-            models.append(m)
+    sc = _session_schema_for(conn, session_id)
+    if sc["v2"]:
+        rows = conn.execute(
+            "SELECT data FROM session_message WHERE session_id = ? AND type = 'assistant' ORDER BY seq ASC",
+            (session_id,),
+        ).fetchall()
+        for r in rows:
+            try:
+                data = json.loads(r["data"]) or {}
+            except (json.JSONDecodeError, TypeError):
+                continue
+            model = data.get("model") or {}
+            m = model.get("id") if isinstance(model, dict) else None
+            if m and (not models or models[-1] != m):
+                models.append(m)
+    else:
+        rows = conn.execute(
+            """
+            SELECT json_extract(data, '$.modelID') AS model
+            FROM message
+            WHERE session_id = ? AND json_extract(data, '$.role') = 'assistant'
+            ORDER BY time_created ASC, id ASC
+            """,
+            (session_id,),
+        ).fetchall()
+        for r in rows:
+            m = r["model"]
+            if m and (not models or models[-1] != m):
+                models.append(m)
     return models, max(len(models) - 1, 0)
 
 
@@ -622,6 +755,64 @@ def collect_error_excerpts(conn: sqlite3.Connection, session_id: str) -> list[st
         first = str(raw).strip().splitlines()[0].strip() if str(raw).strip() else ""
         if first and first not in excerpts:
             excerpts.append(first[:200])
+
+    sc = _session_schema_for(conn, session_id)
+    if sc["v2"]:
+        rows = conn.execute(
+            "SELECT data FROM session_message WHERE session_id = ? AND type = 'assistant' ORDER BY seq ASC",
+            (session_id,),
+        ).fetchall()
+        parsed = []
+        for r in rows:
+            try:
+                parsed.append(json.loads(r["data"]) or {})
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        # Tool-level errors from content[].
+        for data in parsed:
+            if len(excerpts) >= 5:
+                break
+            for item in data.get("content") or []:
+                if not isinstance(item, dict) or item.get("type") != "tool":
+                    continue
+                state = item.get("state") or {}
+                if state.get("status") != "error":
+                    continue
+                tool = item.get("name") or "tool"
+                err = state.get("error")
+                add(f"{tool}: {err}" if err else f"{tool}: (error status, no message)")
+
+        # Message-level errors.
+        for data in parsed:
+            if len(excerpts) >= 5:
+                break
+            err = data.get("error")
+            finish = data.get("finish")
+            if not err and finish != "error":
+                continue
+            if isinstance(err, dict):
+                name = err.get("name") or "error"
+                inner = err.get("data") or {}
+                msg = inner.get("message") if isinstance(inner, dict) else None
+            else:
+                name = "error"
+                msg = str(err) if err else None
+            add(f"{name}: {msg}" if msg else f"{name}: (finish={finish})")
+
+        # Text fallback, assistant text only.
+        if len(excerpts) < 5:
+            for data in parsed:
+                if len(excerpts) >= 5:
+                    break
+                for item in data.get("content") or []:
+                    if not isinstance(item, dict) or item.get("type") != "text":
+                        continue
+                    for line in (item.get("text") or "").splitlines():
+                        if any(p.search(line) for p in ERROR_TEXT_PATTERNS):
+                            add(line.strip())
+                            break
+        return excerpts
 
     for r in conn.execute(
         """
@@ -770,9 +961,16 @@ def log_dispatch(conn: sqlite3.Connection, row, repo_name: str, session_id: str)
     models, switches = fetch_model_pathway(conn, session_id)
     tools = fetch_session_tools(conn, session_id)
     errors = collect_error_excerpts(conn, session_id)
-    messages = conn.execute(
-        "SELECT COUNT(*) FROM message WHERE session_id = ?", (session_id,)
-    ).fetchone()[0]
+    sc = _session_schema_for(conn, session_id)
+    if sc["v2"]:
+        messages = conn.execute(
+            "SELECT COUNT(*) FROM session_message WHERE session_id = ? AND type IN ('user','assistant')",
+            (session_id,),
+        ).fetchone()[0]
+    else:
+        messages = conn.execute(
+            "SELECT COUNT(*) FROM message WHERE session_id = ?", (session_id,)
+        ).fetchone()[0]
 
     line = redact(dispatch_line(row, models, switches, tools, messages, errors))[0]
     appended = append_once(root / "DISPATCHES.md", session_id, line + "\n", DISPATCH_HEADER)
@@ -806,11 +1004,12 @@ def archive_one(session_id: str, push: bool) -> int:
     session's own `git add -A` later sweeps those appends into one commit.
     """
     conn = connect()
+    sc = _session_schema_for(conn, session_id)
     row = conn.execute(
-        """
+        f"""
         SELECT id, project_id, directory, title, model,
                time_created, time_updated, parent_id
-        FROM session WHERE id = ?
+        FROM {sc["session"]} WHERE id = ?
         """,
         (session_id,),
     ).fetchone()
@@ -818,9 +1017,15 @@ def archive_one(session_id: str, push: bool) -> int:
         print(f"session not found: {session_id}", file=sys.stderr)
         return 1
 
-    count = conn.execute(
-        "SELECT COUNT(*) FROM message WHERE session_id = ?", (session_id,)
-    ).fetchone()[0]
+    if sc["v2"]:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM session_message WHERE session_id = ? AND type IN ('user','assistant')",
+            (session_id,),
+        ).fetchone()[0]
+    else:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM message WHERE session_id = ?", (session_id,)
+        ).fetchone()[0]
     if count < MIN_MESSAGES_FOR_ARCHIVE:
         print(f"skip {session_id}: no messages yet")
         return 0
@@ -891,6 +1096,7 @@ def _existing_archive_targets(conn: sqlite3.Connection, limit: int | None):
     """
     root = git_root()
     targets = []
+    sess_table = _session_table(conn)
     for path in sorted(p for p in root.rglob("*.md") if "sessions" in p.parts):
         rel = path.relative_to(root).as_posix()
         head = path.read_text(encoding="utf-8", errors="ignore")[:400]
@@ -900,10 +1106,10 @@ def _existing_archive_targets(conn: sqlite3.Connection, limit: int | None):
             print(f"  ! {rel}: no session_id header, left untouched")
             continue
         row = conn.execute(
-            """
+            f"""
             SELECT id, project_id, directory, title, model,
                    time_created, time_updated, parent_id
-            FROM session WHERE id = ?
+            FROM {sess_table} WHERE id = ?
             """,
             (m.group(1),),
         ).fetchone()
@@ -929,14 +1135,15 @@ def backfill(limit: int | None, dry_run: bool, force: bool = False) -> int:
     across the whole archive.
     """
     conn = connect()
+    sess_table = _session_table(conn)
     if force:
         targets = _existing_archive_targets(conn, limit)
     else:
         rows = conn.execute(
-            """
+            f"""
             SELECT id, project_id, directory, title, model,
                    time_created, time_updated, parent_id
-            FROM session
+            FROM {sess_table}
             ORDER BY time_created ASC, id ASC
             """
         ).fetchall()
@@ -1025,8 +1232,9 @@ def main() -> int:
         return build_index_main()
     if args.command == "route":
         conn = connect()
+        sess_table = _session_table(conn)
         row = conn.execute(
-            "SELECT id, project_id, directory, title, parent_id FROM session WHERE id = ?",
+            f"SELECT id, project_id, directory, title, parent_id FROM {sess_table} WHERE id = ?",
             (args.session_id,),
         ).fetchone()
         if not row:
