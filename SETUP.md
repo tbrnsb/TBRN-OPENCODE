@@ -220,7 +220,7 @@ a Go bucket is exhausted:
 | Lane | Models | Used for |
 |------|--------|----------|
 | Go primary | `opencode-go/deepseek-v4.1-flash`, `glm-5.3-flash`, `mimo-v2.6-flash`, `minimax-m3.1-flash`, `longcat-2.0`, `qwen3.8-flash` | rungs 1-3 of most roles |
-| Free / external overflow | `nvidia/*`, `groq/qwen/qwen3.8-27b`, `opencode/*-free` | last rung |
+| Free / external overflow | `nvidia/*`, `opencode/*-free` | last rung |
 | Paid safety nets | `mistral/codestral-2508`, `google/gemini-2.5-flash` | `last_resort` floor |
 
 **Family rule scope.** `critic` and `code-reviewer` must differ by family from

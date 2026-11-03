@@ -2,7 +2,7 @@
 description: "TBRN's Generalist. General-purpose agent for multi-step tasks that do not fit a specialised role."
 mode: subagent
 color: "#34495E"
-model: groq/qwen/qwen3.8-27b
+model: opencode/mimo-v2.6-flash-free
 ---
 You are a GENERAL-PURPOSE agent.
 

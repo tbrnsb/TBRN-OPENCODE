@@ -48,9 +48,9 @@
         "opencode-go/deepseek-v4.1-flash",
         "opencode-go/glm-5.3-flash",
         "opencode-go/mimo-v2.6-flash",
-        "groq/qwen/qwen3.8-27b"
+        "opencode/deepseek-v4.1-flash-free"
       ],
-      "_flag": "2026-11-04: deepseek -> glm -> mimo -> Groq qwen (free overflow; Groq's only capable generic model)."
+      "_flag": "2026-11-04: deepseek -> glm -> mimo -> opencode free deepseek. Groq qwen was tried first and REJECTED with a live 400: the free tier caps input at 7000 ITPM while this system prompt is ~13.2K tokens, so every Groq request fails before the model sees it."
     },
     "tester": {
       "label": "Tester",
@@ -173,11 +173,11 @@
       "label": "General Purpose",
       "mode": "subagent",
       "rungs": [
-        "groq/qwen/qwen3.8-27b",
+        "opencode/mimo-v2.6-flash-free",
         "opencode-go/deepseek-v4.1-flash",
         "opencode-go/glm-5.3-flash"
       ],
-      "_flag": "2026-11-04: free Groq first, then Go deepseek/glm. 3-rung by design."
+      "_flag": "2026-11-04: free opencode mimo first, then Go deepseek/glm. 3-rung by design. Groq was tried and dropped: 7000 ITPM free-tier cap rejects this system prompt (13.2K tokens) with a live 400."
     }
   }
 }
