@@ -241,6 +241,8 @@ main() {
   install_file "${REPO_ROOT}/lib/stateio.py" "${LIB_DIR}/stateio.py"
   install_file "${REPO_ROOT}/lib/classify.sh" "${LIB_DIR}/classify.sh"
   if [[ "$DRY_RUN" == "false" ]]; then
+    # classify.sh is SOURCED by the worker, never executed directly, so 0644 is
+    # intentional; it does not need the executable bit.
     chmod 0644 "${LIB_DIR}/policy.py" "${LIB_DIR}/stateio.py" "${LIB_DIR}/classify.sh"
   fi
   echo

@@ -31,9 +31,11 @@ Work happens through roles defined in `agents/`. Each role has 3 or 4 rungs
 - When a dispatch FAILS, log it with the full ladder pathway into the archive repo:
   `python3 ~/.config/opencode/lib/log-agent-issue.py --role <role> --session-id <id> --rungs-tried "1:<model>:<outcome>,2:..." --final-outcome <result> --notes "<what happened>"`
   This writes to `agents-issue/ISSUES.md` in `sulav-global-sessions` and commits+pushes it.
-- Critic (subagent) must differ BY FAMILY from every model in `author_models`
-  (`.orchestrator/STATE.md` — coder (subagent), debugger (subagent), any takeover); Nemotron NIM and
-  Nemotron Zen are one family.
+- Critic (subagent) and code-reviewer (subagent) must differ BY FAMILY from every model in
+  `author_models` (`.orchestrator/STATE.md` — coder (subagent), debugger (subagent), any takeover);
+  Nemotron NIM and Nemotron Zen are one family. `security-reviewer` (subagent) and
+  `final-verifier` (subagent) are EXEMPT: they verify mechanically (commands, tests, secret
+  scans) rather than judge the authors' code. Never "fix" their chains back under the rule.
 - Last-resort output is accepted only after tester (subagent)/critic (subagent) verification.
 
 ### Role naming and autonomous completion

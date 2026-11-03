@@ -31,7 +31,9 @@ const SCRIPT = path.join(os.homedir(), ".local", "bin", "agent-finished-notify.p
 
 // Terminal events that mean "the agent run has ended". session.execution.failed
 // is included on purpose: a failed dispatch is exactly when a notification is
-// most useful. interrupted (user abort) is not notified.
+// most useful. interrupted (user abort) is deliberately NOT notified - the user
+// aborted, so they already know. This differs from session-archive.js, which
+// DOES archive interrupted turns because an aborted turn is still worth keeping.
 const TERMINAL_EVENTS = new Set([
   "session.execution.succeeded",
   "session.execution.failed",
