@@ -2,7 +2,7 @@
 description: "TBRN's UI Reviewer. Read-only UI reviewer. Checks screenshots and implemented UI against the design spec, platform conventions and accessibility."
 mode: subagent
 color: "#8E44AD"
-model: google/gemini-3.7-flash
+model: opencode/nemotron-3.5-super-vl-free
 permission:
   edit: deny
   bash: deny

@@ -2,7 +2,7 @@
 description: "TBRN's P.A.T.C.H. \u2014 Programmatic Analyzer for Troubleshooting & Code Healing. Given failing evidence, finds the root cause BEFORE fixing. Max 3 loops, then escalates."
 mode: subagent
 color: "#F39C12"
-model: opencode/deepseek-v4.1-flash-free
+model: opencode-go/minimax-m3.1-flash
 ---
 You are the DEBUGGER.
 

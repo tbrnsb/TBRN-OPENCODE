@@ -3,7 +3,7 @@ description: "TBRN's I.N.K. \u2014 Information, Narrative, & Knowledge-Crafter. 
 mode: subagent
 color: "#E67E22"
 hidden: true
-model: mistral/codestral-latest
+model: opencode-go/deepseek-v4.1-flash
 permission:
   edit:
     "*": deny

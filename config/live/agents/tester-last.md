@@ -3,7 +3,7 @@ description: "TBRN's V.A.L.I.D.A.T.O.R. \u2014 Verification & Automated Logic In
 mode: subagent
 color: "#27AE60"
 hidden: true
-model: google/gemini-3.5-flash
+model: opencode/mimo-v2.6-flash-free
 permission:
   edit:
     "*": deny

@@ -35,7 +35,7 @@ Reasons: `429`, `timeout`, `5xx`, `empty`, `garbage`.
 
 ```
 opencode/deepseek-v4.1-flash-free
-mistral/codestral-latest
+mistral/codestral-2508
 nvidia_secondary/nvidia/nemotron-3.5-lightning-30b-a3b
 ```
 

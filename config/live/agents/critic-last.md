@@ -3,7 +3,7 @@ description: "TBRN's J.U.D.G.E. \u2014 Justified Unit & Design Guardian Evaluato
 mode: subagent
 color: "#E74C3C"
 hidden: true
-model: google/gemini-3.7-flash
+model: mistral/codestral-2508
 permission:
   edit: deny
   bash: deny

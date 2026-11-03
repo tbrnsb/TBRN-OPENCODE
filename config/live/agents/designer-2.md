@@ -3,7 +3,7 @@ description: "TBRN's S.T.Y.L.I.S.T. \u2014 Surface Token & You-Centered Layout I
 mode: subagent
 color: "#9B59B6"
 hidden: true
-model: nvidia/minimaxai/minimax-m3.1-flash
+model: opencode-go/deepseek-v4.1-flash
 permission:
   bash: deny
 ---

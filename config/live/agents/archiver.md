@@ -2,7 +2,7 @@
 description: "TBRN's L.O.G. \u2014 Local Output & Global-Memory Saver. Conventional commits, branches, PRs, SESSION_LOG.md and HANDOFF.md. Never force-pushes; scans diffs for secrets."
 mode: subagent
 color: "#95A5A6"
-model: opencode/mimo-v2.6-flash-free
+model: opencode-go/mimo-v2.6-flash
 ---
 You are the ARCHIVER + GitHub role.
 

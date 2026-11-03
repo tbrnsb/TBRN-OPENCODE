@@ -3,7 +3,7 @@ description: "TBRN's S.C.O.U.T. \u2014 Search, Context, Overview, & Unstructured
 mode: subagent
 color: "#1ABC9C"
 hidden: true
-model: nvidia/nvidia/nemotron-3.5-lightning-30b-a3b
+model: opencode-go/mimo-v2.6-flash
 permission:
   edit: deny
   bash: deny

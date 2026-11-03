@@ -3,7 +3,7 @@ description: "TBRN's J.U.D.G.E. \u2014 Justified Unit & Design Guardian Evaluato
 mode: subagent
 color: "#E74C3C"
 hidden: true
-model: nvidia/nvidia/nemotron-3-ultra-550b-a55b
+model: google/gemini-3.8-flash
 permission:
   edit: deny
   bash: deny

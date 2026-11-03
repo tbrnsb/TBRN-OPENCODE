@@ -3,7 +3,7 @@ description: "TBRN's C.I.P.H.E.R. \u2014 Code Implementation & Programming Hiera
 mode: subagent
 color: "#2ECC71"
 hidden: true
-model: opencode/deepseek-v4.1-flash-free
+model: groq/qwen/qwen3.8-27b
 ---
 You are the CODER.
 

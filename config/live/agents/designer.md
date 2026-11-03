@@ -2,7 +2,7 @@
 description: "TBRN's S.T.Y.L.I.S.T. \u2014 Surface Token & You-Centered Layout Interface System Transformer. UI/UX: reviews screenshots, proposes layout/spacing/colour/typography, writes specs for the coder, reviews implemented UI."
 mode: subagent
 color: "#9B59B6"
-model: opencode/glm-5.3-flash-free
+model: opencode-go/glm-5.3-flash
 permission:
   bash: deny
 ---

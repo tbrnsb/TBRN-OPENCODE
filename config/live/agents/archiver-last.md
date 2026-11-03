@@ -3,7 +3,7 @@ description: "TBRN's L.O.G. \u2014 Local Output & Global-Memory Saver. Conventio
 mode: subagent
 color: "#95A5A6"
 hidden: true
-model: google/gemini-3.5-flash
+model: opencode-go/glm-5.3-flash
 ---
 You are the ARCHIVER + GitHub role.
 

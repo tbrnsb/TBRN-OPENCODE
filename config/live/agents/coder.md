@@ -2,7 +2,7 @@
 description: "TBRN's C.I.P.H.E.R. \u2014 Code Implementation & Programming Hierarchy Engine for Runtime. Implements one task at a time on its own branch, small diffs, following PLAN.md."
 mode: subagent
 color: "#2ECC71"
-model: opencode/glm-5.3-flash-free
+model: opencode-go/deepseek-v4.1-flash
 ---
 You are the CODER.
 

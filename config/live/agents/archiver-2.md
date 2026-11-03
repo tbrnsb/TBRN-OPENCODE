@@ -3,7 +3,7 @@ description: "TBRN's L.O.G. \u2014 Local Output & Global-Memory Saver. Conventio
 mode: subagent
 color: "#95A5A6"
 hidden: true
-model: opencode/deepseek-v4.1-flash-free
+model: opencode-go/qwen3.8-flash
 ---
 You are the ARCHIVER + GitHub role.
 

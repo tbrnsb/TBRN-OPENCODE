@@ -3,7 +3,7 @@ description: "TBRN's S.T.R.A.T.E.G.I.S.T. \u2014 Systematic Task Roadmap & Actio
 mode: subagent
 color: "#4C9AFF"
 hidden: true
-model: nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b
+model: opencode-go/deepseek-v4.1-flash
 permission:
   edit:
     "*": deny

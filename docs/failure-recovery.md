@@ -44,7 +44,7 @@ When a role's own rungs are exhausted, walk the global `last_resort` chain in
 `chains.json`, in order:
 
 1. `opencode/deepseek-v4.1-flash-free`
-2. `mistral/codestral-latest`
+2. `mistral/codestral-2508`
 3. `nvidia_secondary/nvidia/nemotron-3.5-lightning-30b-a3b`
 
 Skip any model the role already tried and any model in cooldown. Output from

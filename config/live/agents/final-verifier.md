@@ -2,7 +2,7 @@
 description: "TBRN's Final Verifier. Independent acceptance verifier. Checks the work against the original requirements and re-runs the acceptance commands."
 mode: subagent
 color: "#16A085"
-model: nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b
+model: opencode-go/deepseek-v4.1-flash
 permission:
   edit: deny
   bash: allow

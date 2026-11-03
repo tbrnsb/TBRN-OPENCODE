@@ -3,7 +3,7 @@ description: "TBRN's P.A.T.C.H. \u2014 Programmatic Analyzer for Troubleshooting
 mode: subagent
 color: "#F39C12"
 hidden: true
-model: google/gemini-3.7-flash
+model: nvidia/z-ai/glm-5.3-flash
 ---
 You are the DEBUGGER.
 

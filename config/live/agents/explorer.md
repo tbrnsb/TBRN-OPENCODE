@@ -2,7 +2,7 @@
 description: "TBRN's S.C.O.U.T. \u2014 Search, Context, Overview, & Unstructured Terrain-Gatherer. Read-only repository investigator. Maps the project, architecture, relevant files, dependencies, existing behavior, and constraints before implementation."
 mode: subagent
 color: "#1ABC9C"
-model: opencode/mimo-v2.6-flash-free
+model: opencode-go/longcat-2.0
 permission:
   edit: deny
   bash: deny

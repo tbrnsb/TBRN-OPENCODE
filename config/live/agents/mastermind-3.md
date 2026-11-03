@@ -2,7 +2,7 @@
 description: "TBRN's M.A.X.I.M. \u2014 Master Agent for Xecutive Intelligence & Management. Single point of contact. Breaks goals into steps, dispatches ONE subagent at a time, keeps STATE.md, enforces caps, runs the failure ladder."
 mode: primary
 color: "#7C5CFF"
-model: nvidia/nvidia/nemotron-3.5-lightning-30b-a3b
+model: opencode-go/mimo-v2.6-flash
 permission:
   subagent:
     "*": deny

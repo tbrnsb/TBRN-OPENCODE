@@ -3,7 +3,7 @@ description: "TBRN's Security Reviewer. Read-only security reviewer. Audits the 
 mode: subagent
 color: "#D35400"
 hidden: true
-model: opencode/glm-5.3-flash-free
+model: opencode-go/glm-5.3-flash
 permission:
   edit: deny
   bash: deny

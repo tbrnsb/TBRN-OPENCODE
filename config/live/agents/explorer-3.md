@@ -3,7 +3,7 @@ description: "TBRN's S.C.O.U.T. \u2014 Search, Context, Overview, & Unstructured
 mode: subagent
 color: "#1ABC9C"
 hidden: true
-model: opencode/deepseek-v4.1-flash-free
+model: opencode-go/deepseek-v4.1-flash
 permission:
   edit: deny
   bash: deny

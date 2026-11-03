@@ -3,7 +3,7 @@ description: "TBRN's S.T.Y.L.I.S.T. \u2014 Surface Token & You-Centered Layout I
 mode: subagent
 color: "#9B59B6"
 hidden: true
-model: opencode/mimo-v2.6-flash-free
+model: opencode-go/mimo-v2.6-flash
 permission:
   bash: deny
 ---

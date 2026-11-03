@@ -1,13 +1,13 @@
 {
-  "_comment": "Single source of truth for all role model chains. IDs re-verified against `opencode models` (2026-11-15): every entry present. Ordering is per-role as specified by the user; review roles intentionally put the 550B model early for depth. chains -> generated agents/* via scripts/gen-fallbacks.py. Do not edit generated files by hand.",
+  "_comment": "Single source of truth for all role model chains. IDs re-verified against `opencode models` (2026-11-04, OpenCode 2.2.5): every entry present and active. OpenCode Go ($X/5h quota pools) is the primary lane; free NIM/Groq/opencode-free rungs are the overflow. Ordering is per-role as specified by the user. chains -> generated agents/* via scripts/gen-fallbacks.py. Do not edit generated files by hand.",
   "last_resort": [
-    "opencode/deepseek-v4.1-flash-free",
+    "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
     "mistral/codestral-2508",
-    "nvidia_secondary/nvidia/nemotron-3.5-lightning-30b-a3b"
+    "google/gemini-2.5-flash"
   ],
-  "_last_resort_comment": "Global floor, tried IN ORDER after a role's own rungs are exhausted and before the mastermind takes over. Updated 2026-11-15.",
+  "_last_resort_comment": "Global floor, tried IN ORDER after a role's own rungs are exhausted and before the mastermind takes over. 2026-11-04: nvidia_secondary and opencode/free Nemotron routes are NOT used (user rule) - the NIM lane is nvidia/. Primary is free; codestral and gemini-2.5-flash are the paid safety nets.",
   "families": {
-    "_comment": "Critic, code-reviewer, security-reviewer and final-verifier must differ BY FAMILY from EVERY model in author_models (coder, debugger, takeovers). Only the Nemotron group is merged (explicit user rule: Nemotron NIM and Nemotron Zen are one family); every other model is its own family. Both provider spellings are listed so family() resolves nvidia and nvidia_secondary routes to the same family.",
+    "_comment": "Critic and code-reviewer must differ BY FAMILY from EVERY model in author_models (coder, debugger, takeovers). Scope is critic + code-reviewer only (AGENTS.md names the critic; security-reviewer and final-verifier intentionally reuse author families because they verify mechanically - commands, tests, secret scans - rather than judging code the authors wrote). Only the Nemotron group is merged (explicit user rule: Nemotron NIM and Nemotron Zen are one family); every other model is its own family. Both provider spellings are listed so family() resolves nvidia and nvidia_secondary routes to the same family.",
     "nemotron": [
       "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
       "nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b",
@@ -23,162 +23,161 @@
       "label": "Mastermind",
       "mode": "primary",
       "rungs": [
-        "opencode/mimo-v2.6-flash-free",
-        "opencode/deepseek-v4.1-flash-free",
-        "nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
-        "google/gemini-3.8-flash"
+        "opencode-go/deepseek-v4.1-flash",
+        "opencode-go/glm-5.3-flash",
+        "opencode-go/mimo-v2.6-flash",
+        "nvidia/deepseek-ai/deepseek-v4.1-flash"
       ],
-      "_flag": "2026-11-15: gemini-3.8-flash replaces gemini-3.5-flash at rung 4."
+      "_flag": "2026-11-04: Go plan. deepseek first (tool-call loop), glm + mimo spread the other quota pools, NIM deepseek as free overflow."
     },
     "planner": {
       "label": "Analyst/Planner",
       "mode": "subagent",
       "rungs": [
-        "opencode/glm-5.3-flash-free",
-        "nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b",
-        "opencode/deepseek-v4.1-flash-free",
-        "google/gemini-3.8-flash"
+        "opencode-go/glm-5.3-flash",
+        "opencode-go/deepseek-v4.1-flash",
+        "opencode-go/mimo-v2.6-pro",
+        "nvidia/z-ai/glm-5.3-flash"
       ],
-      "_flag": "2026-11-15: gemini-3.8-flash replaces gemini-3.7-flash at rung 4."
+      "_flag": "2026-11-04: rung 3 was GLM-5.3; replaced with mimo-v2.6-pro so the ladder has three distinct families (glm, deepseek, mimo). NIM has no plain glm-5.3 - overflow uses glm-5.3-flash."
     },
     "coder": {
       "label": "Coder",
       "mode": "subagent",
       "rungs": [
-        "opencode/glm-5.3-flash-free",
-        "mistral/codestral-2508",
-        "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
-        "opencode/deepseek-v4.1-flash-free"
+        "opencode-go/deepseek-v4.1-flash",
+        "opencode-go/glm-5.3-flash",
+        "opencode-go/mimo-v2.6-flash",
+        "groq/qwen/qwen3.8-27b"
       ],
-      "_flag": "2026-11-15: codestral-2508 replaces codestral-latest at rung 2. glm -> codestral -> 550B -> deepseek."
+      "_flag": "2026-11-04: deepseek -> glm -> mimo -> Groq qwen (free overflow; Groq's only capable generic model)."
     },
     "tester": {
       "label": "Tester",
       "mode": "subagent",
       "rungs": [
-        "opencode/deepseek-v4.1-flash-free",
-        "mistral/codestral-2508",
-        "opencode/glm-5.3-flash-free",
-        "google/gemini-3.8-flash"
+        "opencode-go/mimo-v2.6-flash",
+        "opencode-go/glm-5.3-flash",
+        "opencode-go/qwen3.8-flash",
+        "opencode/mimo-v2.6-flash-free"
       ],
-      "_flag": "2026-11-15: codestral-2508 replaces codestral-latest at rung 2; gemini-3.8-flash replaces gemini-3.5-flash at rung 4."
+      "_flag": "2026-11-04: mimo first (terminal output parsing), qwen third, opencode free mimo as overflow."
     },
     "debugger": {
       "label": "Debugger",
       "mode": "subagent",
       "rungs": [
-        "opencode/deepseek-v4.1-flash-free",
-        "opencode/glm-5.3-flash-free",
-        "nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b",
-        "google/gemini-3.8-flash"
+        "opencode-go/minimax-m3.1-flash",
+        "opencode-go/glm-5.3-flash",
+        "opencode-go/longcat-2.0",
+        "nvidia/z-ai/glm-5.3-flash"
       ],
-      "_flag": "2026-11-15: gemini-3.8-flash replaces gemini-3.7-flash at rung 4."
+      "_flag": "2026-11-04: rung 3 was GLM-5.3 (duplicate family of rung 2); replaced with longcat-2.0 - 1M context for large logs and tracebacks. Overflow GLM on NIM is glm-5.3-flash."
     },
     "critic": {
       "label": "Critic",
       "mode": "subagent",
       "rungs": [
-        "opencode/glm-5.3-flash-free",
         "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
-        "opencode/deepseek-v4.1-flash-free",
-        "google/gemini-3.8-flash"
+        "google/gemini-3.8-flash",
+        "opencode-go/claude-haiku-5-5",
+        "mistral/codestral-2508"
       ],
-      "_flag": "2026-11-15: gemini-3.8-flash replaces gemini-3.7-flash at rung 4. Four distinct families (glm, nemotron, deepseek, google)."
+      "_flag": "2026-11-04: rebuilt for the family rule. Author families are deepseek/glm/mimo/qwen (coder) and minimax/glm/longcat (debugger). Critic uses nemotron, google, claude, mistral - zero overlap. The user's original glm/deepseek/mimo-pro ladder shared every author family, so it could not satisfy the rule."
     },
     "designer": {
       "label": "Designer",
       "mode": "subagent",
       "rungs": [
-        "opencode/glm-5.3-flash-free",
-        "nvidia/minimaxai/minimax-m3.1-flash",
-        "opencode/mimo-v2.6-flash-free",
-        "google/gemini-3.8-flash"
+        "opencode-go/glm-5.3-flash",
+        "opencode-go/deepseek-v4.1-flash",
+        "opencode-go/mimo-v2.6-flash",
+        "opencode/glm-5.3-flash-free"
       ],
-      "_flag": "2026-11-15: gemini-3.8-flash replaces gemini-3.7-flash at rung 4. All four remain image-capable."
+      "_flag": "2026-11-04: deepseek-v4.1-flash is treated as vision-capable per the user; all rungs remain image-capable. Free overflow is the real opencode/glm-5.3-flash-free ID."
     },
     "copywriter": {
       "label": "Copywriter",
       "mode": "subagent",
       "rungs": [
-        "opencode/mimo-v2.6-flash-free",
-        "opencode/deepseek-v4.1-flash-free",
-        "mistral/codestral-2508",
+        "opencode-go/glm-5.3-flash",
+        "opencode-go/claude-haiku-5-5",
+        "opencode-go/deepseek-v4.1-flash",
         "google/gemini-3.8-flash"
       ],
-      "_flag": "2026-11-15: codestral-2508 replaces codestral-latest at rung 3; gemini-3.8-flash replaces gemini-3.5-flash at rung 4."
+      "_flag": "2026-11-04: glm -> haiku -> deepseek -> gemini. There is no free Gemini 3.8 variant in the registry; google/gemini-3.8-flash is the proven route (user approved)."
     },
     "explorer": {
       "label": "Repository Explorer",
       "mode": "subagent",
       "rungs": [
-        "opencode/mimo-v2.6-flash-free",
-        "nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
-        "opencode/deepseek-v4.1-flash-free",
-        "nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b"
+        "opencode-go/longcat-2.0",
+        "opencode-go/mimo-v2.6-flash",
+        "opencode-go/deepseek-v4.1-flash",
+        "nvidia/nvidia/nemotron-3-ultra-550b-a55b"
       ],
-      "_flag": "2026-11-15: unchanged (lightning-30b at rung 2; 550B on patient lane at rung 4)."
+      "_flag": "2026-11-04: longcat-2.0 first for its 1M context (grep/scan heavy work). Overflow Nemotron is the nvidia/ route - no nvidia_secondary, no opencode free."
     },
     "code-reviewer": {
       "label": "Code Reviewer",
       "mode": "subagent",
       "rungs": [
-        "opencode/glm-5.3-flash-free",
+        "google/gemini-3.8-flash",
         "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
-        "opencode/deepseek-v4.1-flash-free",
-        "google/gemini-3.8-flash"
+        "opencode-go/claude-haiku-5-5",
+        "mistral/codestral-2508"
       ],
-      "_flag": "2026-11-15: gemini-3.8-flash replaces gemini-3.7-flash at rung 4. Same author-family separation rule as critic."
+      "_flag": "2026-11-04: rebuilt for the family rule (same constraint as critic, different order). Gemini first for fast diff review; nemotron for depth."
     },
     "archiver": {
       "label": "Archiver + GitHub",
       "mode": "subagent",
       "rungs": [
-        "opencode/mimo-v2.6-flash-free",
-        "opencode/deepseek-v4.1-flash-free",
-        "mistral/codestral-2508",
-        "google/gemini-3.8-flash"
+        "opencode-go/mimo-v2.6-flash",
+        "opencode-go/qwen3.8-flash",
+        "opencode-go/glm-5.3-flash"
       ],
-      "_flag": "2026-11-15: codestral-2508 replaces codestral-latest at rung 3; gemini-3.8-flash replaces gemini-3.5-flash at rung 4."
+      "_flag": "2026-11-04: 3-rung by design. No free/overflow rung on purpose: archiver handles commit and push state, so it stays on the paid Go lane (secrets never leave quota-protected providers)."
     },
     "security-reviewer": {
       "label": "Security Reviewer",
       "mode": "subagent",
       "rungs": [
-        "nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b",
-        "opencode/glm-5.3-flash-free",
-        "mistral/codestral-2508"
+        "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
+        "opencode-go/glm-5.3-flash",
+        "opencode-go/mimo-v2.6-pro"
       ],
-      "_flag": "2026-11-15: codestral-2508 replaces codestral-latest at rung 3. 3-rung chain: 550B (patient) -> glm -> codestral."
+      "_flag": "2026-11-04: user-prescribed chain. Rung 3 was GLM-5.3 (banned); mimo-v2.6-pro is the user's first alternative. Rung 1 (most used) is a free independent family."
     },
     "final-verifier": {
       "label": "Final Verifier",
       "mode": "subagent",
       "rungs": [
-        "nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b",
-        "opencode/glm-5.3-flash-free",
-        "opencode/deepseek-v4.1-flash-free"
+        "opencode-go/deepseek-v4.1-flash",
+        "opencode-go/mimo-v2.6-flash",
+        "opencode-go/glm-5.3-flash"
       ],
-      "_flag": "2026-11-15: unchanged 3-rung chain. Runs acceptance checks itself; edit denied."
+      "_flag": "2026-11-04: user-prescribed 3-rung chain. Mechanical verification (re-runs acceptance commands), so the critic family rule is deliberately not applied."
     },
     "ui-reviewer": {
       "label": "UI Reviewer",
       "mode": "subagent",
       "rungs": [
-        "google/gemini-3.8-flash",
-        "nvidia/minimaxai/minimax-m3.1-flash",
-        "opencode/glm-5.3-flash-free"
+        "opencode/nemotron-3.5-super-vl-free",
+        "opencode-go/glm-5.3-flash",
+        "opencode-go/minimax-m3"
       ],
-      "_flag": "2026-11-15: gemini-3.8-flash replaces gemini-3.7-flash at rung 1. All three are image-capable."
+      "_flag": "2026-11-04: all three image-capable. Rung 1 is the free vision model; rung 3 is minimax-m3 because opencode-go has no gemini-3.8-flash (registry check)."
     },
     "general": {
       "label": "General Purpose",
       "mode": "subagent",
       "rungs": [
-        "opencode/mimo-v2.6-flash-free",
-        "opencode/deepseek-v4.1-flash-free",
-        "mistral/codestral-2508"
+        "groq/qwen/qwen3.8-27b",
+        "opencode-go/deepseek-v4.1-flash",
+        "opencode-go/glm-5.3-flash"
       ],
-      "_flag": "2026-11-15: codestral-2508 replaces codestral-latest at rung 3. 3-rung chain."
+      "_flag": "2026-11-04: free Groq first, then Go deepseek/glm. 3-rung by design."
     }
   }
 }

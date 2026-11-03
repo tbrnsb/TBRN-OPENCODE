@@ -3,7 +3,7 @@ description: "TBRN's G.U.A.R.D. \u2014 Git-level Unit & Architecture Refinement 
 mode: subagent
 color: "#C0392B"
 hidden: true
-model: opencode/deepseek-v4.1-flash-free
+model: opencode-go/claude-haiku-5-5
 permission:
   edit: deny
   bash: deny

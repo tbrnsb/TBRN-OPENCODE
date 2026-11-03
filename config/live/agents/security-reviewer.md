@@ -2,7 +2,7 @@
 description: "TBRN's Security Reviewer. Read-only security reviewer. Audits the diff for secrets, injection, unsafe IO, authz gaps and data exposure."
 mode: subagent
 color: "#D35400"
-model: nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b
+model: nvidia/nvidia/nemotron-3-ultra-550b-a55b
 permission:
   edit: deny
   bash: deny

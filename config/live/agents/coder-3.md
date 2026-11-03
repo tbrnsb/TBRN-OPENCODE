@@ -3,7 +3,7 @@ description: "TBRN's C.I.P.H.E.R. \u2014 Code Implementation & Programming Hiera
 mode: subagent
 color: "#2ECC71"
 hidden: true
-model: nvidia/nvidia/nemotron-3-ultra-550b-a55b
+model: opencode-go/mimo-v2.6-flash
 ---
 You are the CODER.
 

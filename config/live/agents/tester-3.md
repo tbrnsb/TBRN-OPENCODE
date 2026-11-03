@@ -3,7 +3,7 @@ description: "TBRN's V.A.L.I.D.A.T.O.R. \u2014 Verification & Automated Logic In
 mode: subagent
 color: "#27AE60"
 hidden: true
-model: opencode/glm-5.3-flash-free
+model: opencode-go/qwen3.8-flash
 permission:
   edit:
     "*": deny

@@ -2,7 +2,7 @@
 description: "TBRN's V.A.L.I.D.A.T.O.R. \u2014 Verification & Automated Logic Inspection Device for Accuracy & Test Output Review. Runs tests, static analysis and the build. Reports pass/fail with evidence. May edit test files only."
 mode: subagent
 color: "#27AE60"
-model: opencode/deepseek-v4.1-flash-free
+model: opencode-go/mimo-v2.6-flash
 permission:
   edit:
     "*": deny

@@ -3,7 +3,7 @@ description: "TBRN's Generalist. General-purpose agent for multi-step tasks that
 mode: subagent
 color: "#34495E"
 hidden: true
-model: opencode/deepseek-v4.1-flash-free
+model: opencode-go/deepseek-v4.1-flash
 ---
 You are a GENERAL-PURPOSE agent.
 

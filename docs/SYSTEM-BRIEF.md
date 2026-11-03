@@ -40,12 +40,12 @@ generates one agent file per rung (`<role>.md`, `<role>-2.md`, `<role>-3.md`,
 `<role>-last.md`) into `agents/`. A 3-rung role — `security-reviewer`,
 `final-verifier`, `ui-reviewer`, `general` — has no `-3` file.
 
-- 56 agents total: 11 roles x 4 rungs + 4 roles x 3 rungs.
+- 55 agents total: 10 roles x 4 rungs + 5 roles x 3 rungs.
 - 18 visible: the 15 base rungs plus the mastermind's `-2`, `-3`, `-last`.
 - 38 rung agents are `hidden: true`: out of the @ menu and the agent picker,
   dispatched by id only after the previous rung fails.
 - Generated files are never hand-edited. Edit `chains.json`, re-run the
-  generator. `gen-fallbacks.py --check` reports "in sync: 56 agents".
+  generator. `gen-fallbacks.py --check` reports "in sync: 55 agents".
 
 ## 4. Dispatch
 
@@ -71,7 +71,7 @@ Per role, in order: rung 1, then `-2`, then `-3` (4-rung roles only), then
    dispatch the next rung.
 3. Role chain exhausted: walk the global `last_resort` chain in order, skipping
    models already tried by that role and models in cooldown:
-   `opencode/deepseek-v4.1-flash-free`, `mistral/codestral-latest`,
+   `opencode/go` quota models, `mistral/codestral-2508`,
    `nvidia_secondary/nvidia/nemotron-3.5-lightning-30b-a3b`.
 4. Everything dead: the mastermind takes the role over. If the mastermind's own
    chain fails, it writes `HANDOFF.md` (task, decisions, files changed, next
@@ -160,7 +160,7 @@ Flags: `--dry-run`, `--force`, `--config-dir`.
 1. OpenCode 2.2.0's @ autocomplete shows no description for agents, only
    skills. The "TBRN's <Role>" brand therefore appears in the Tab picker and
    the subagent list, not in `@`.
-2. `opencode-validate-pins` reports 56/56 agents "unlabelled" under the default
+2. `opencode-validate-pins` reports 55/55 agents "unlabelled" under the default
    public pin ceiling, while exiting 0.
 3. The GO worker (`go/`, `scripts/opencode-worker`, `lib/classify.sh`,
    `lib/policy.py`) is legacy and pending removal. It is not the current

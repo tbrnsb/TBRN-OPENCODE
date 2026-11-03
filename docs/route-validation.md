@@ -71,7 +71,7 @@ Always start with a dry run. A full sweep costs real requests.
 ./scripts/validate-routes --dry-run
 
 # probe one model
-./scripts/probe-model mistral/codestral-latest
+./scripts/probe-model mistral/codestral-2508
 
 # probe one model, JSON, no tool stage (cheaper)
 ./scripts/probe-model opencode/space-bunny-free --json --skip-tool
@@ -115,7 +115,7 @@ with one real domain and no escape.
 
 A route that reaches stage 3 is *reachable and can call tools*. It is not
 automatically *suitable* for a given specialist. Judging whether
-`codestral-latest` is right for `code-reviewer` is a separate decision, and one
+`codestral-2508` is right for `code-reviewer` is a separate decision, and one
 a benchmark table settles faster than a reachability probe.
 
 ## Extending it

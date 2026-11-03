@@ -5,7 +5,7 @@
 1. OpenCode 2.2.0's @ autocomplete shows no description for agents, only
    skills. The "TBRN's <Role>" brand therefore appears in the Tab picker and
    the subagent list, not in `@`.
-2. `opencode-validate-pins` reports 56/56 agents "unlabelled" under the default
+2. `opencode-validate-pins` reports 55/55 agents "unlabelled" under the default
    public pin ceiling, while exiting 0.
 3. The GO worker (`go/`, `scripts/opencode-worker`, `lib/classify.sh`,
    `lib/policy.py`) is legacy and pending removal. It is not the current
@@ -32,7 +32,7 @@ agent 'coder' is a subagent, not a primary agent. Falling back to default agent
 ### Impact
 | Expected | Actual |
 |----------|--------|
-| Specialist model used (e.g., `mistral/codestral-latest`) | Falls back to primary agent model (`nvidia/poolside/laguna-xs-2.1`) |
+| Specialist model used (e.g., `mistral/codestral-2508`) | Falls back to primary agent model (`nvidia/poolside/laguna-xs-2.1`) |
 | Specialist prompt applied | Primary agent prompt used |
 | Independent specialist context | Shared with primary agent |
 

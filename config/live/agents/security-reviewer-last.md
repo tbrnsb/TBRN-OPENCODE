@@ -3,7 +3,7 @@ description: "TBRN's Security Reviewer. Read-only security reviewer. Audits the 
 mode: subagent
 color: "#D35400"
 hidden: true
-model: mistral/codestral-latest
+model: opencode-go/mimo-v2.6-pro
 permission:
   edit: deny
   bash: deny

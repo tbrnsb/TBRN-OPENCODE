@@ -3,7 +3,7 @@ description: "TBRN's UI Reviewer. Read-only UI reviewer. Checks screenshots and 
 mode: subagent
 color: "#8E44AD"
 hidden: true
-model: nvidia/minimaxai/minimax-m3.1-flash
+model: opencode-go/glm-5.3-flash
 permission:
   edit: deny
   bash: deny

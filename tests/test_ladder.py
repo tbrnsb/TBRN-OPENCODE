@@ -133,9 +133,11 @@ class PickCriticTests(unittest.TestCase):
                                str(path)], capture_output=True, text=True)
 
     def test_first_differing_rung_wins(self):
+        # critic now starts on nemotron (non-author family); a deepseek author
+        # must not block it.
         got = self.pick("### author_models\n- opencode/deepseek-v4.1-flash-free\n")
         self.assertEqual(got.returncode, 0, got.stderr)
-        self.assertIn("glm-5.3-flash-free", got.stdout)
+        self.assertIn("nemotron-3-ultra-550b-a55b", got.stdout)
         self.assertIn("[criticbase]", got.stdout)
 
     def test_skips_same_family_and_takes_the_next_rung(self):
@@ -144,18 +146,19 @@ class PickCriticTests(unittest.TestCase):
             "- opencode/glm-5.3-flash-free\n"
             "- nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b\n")
         self.assertEqual(got.returncode, 0, got.stderr)
-        # glm (rung 1) and nemotron (rung 2, other spelling) both refused.
-        self.assertIn("[critic-3]", got.stdout)
-        self.assertIn("deepseek-v4.1-flash-free", got.stdout)
+        # nemotron (rung 1) refused; gemini (rung 2) is the first free family.
+        self.assertIn("[critic-2]", got.stdout)
+        self.assertIn("gemini-3.8-flash", got.stdout)
         self.assertIn("SAME FAMILY", got.stdout)
 
     def test_all_rungs_same_family_escalates(self):
+        # One author per critic family: nemotron, google, claude, mistral.
         got = self.pick(
             "### author_models\n"
-            "- opencode/glm-5.3-flash-free\n"
             "- nvidia/nvidia/nemotron-3-ultra-550b-a55b\n"
-            "- opencode/deepseek-v4.1-flash-free\n"
-            "- google/gemini-3.8-flash\n")
+            "- google/gemini-3.8-flash\n"
+            "- opencode-go/claude-haiku-5-5\n"
+            "- mistral/codestral-2508\n")
         self.assertEqual(got.returncode, 4)
         self.assertIn("escalate", got.stderr)
         self.assertEqual(got.stdout.count("refused"), 4)
@@ -167,12 +170,14 @@ class PickCriticTests(unittest.TestCase):
 
     def test_older_turn_does_not_block_the_critic(self):
         got = self.pick(
-            "### author_models\n- opencode/glm-5.3-flash-free\n"
+            "### author_models\n"
             "- nvidia/nvidia/nemotron-3-ultra-550b-a55b\n"
-            "- opencode/deepseek-v4.1-flash-free\n- google/gemini-3.8-flash\n\n"
+            "- google/gemini-3.8-flash\n"
+            "- opencode-go/claude-haiku-5-5\n"
+            "- mistral/codestral-2508\n\n"
             "## NEXT TURN\n\n### author_models\n- opencode/deepseek-v4.1-flash-free\n")
         self.assertEqual(got.returncode, 0, got.stderr)
-        self.assertIn("glm-5.3-flash-free", got.stdout)
+        self.assertIn("nemotron-3-ultra-550b-a55b", got.stdout)
 
 
 class LadderRunTests(unittest.TestCase):
@@ -332,7 +337,8 @@ class LiveConfigTests(unittest.TestCase):
     def test_generated_agents_have_colors(self):
         colors = gen_fallbacks.COLORS
         agents = sorted((CONFIG_ROOT / "agents").glob("*.md"))
-        self.assertEqual(len(agents), 56)
+        # 10 four-rung roles + 5 three-rung roles = 55.
+        self.assertEqual(len(agents), 55)
         for p in agents:
             role = p.stem
             for suffix in ("-2", "-3", "-last"):

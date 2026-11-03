@@ -3,7 +3,7 @@ description: "TBRN's I.N.K. \u2014 Information, Narrative, & Knowledge-Crafter. 
 mode: subagent
 color: "#E67E22"
 hidden: true
-model: google/gemini-3.5-flash
+model: google/gemini-3.8-flash
 permission:
   edit:
     "*": deny

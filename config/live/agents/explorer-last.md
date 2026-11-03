@@ -3,7 +3,7 @@ description: "TBRN's S.C.O.U.T. \u2014 Search, Context, Overview, & Unstructured
 mode: subagent
 color: "#1ABC9C"
 hidden: true
-model: nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b
+model: nvidia/nvidia/nemotron-3-ultra-550b-a55b
 permission:
   edit: deny
   bash: deny

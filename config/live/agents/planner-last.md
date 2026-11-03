@@ -3,7 +3,7 @@ description: "TBRN's S.T.R.A.T.E.G.I.S.T. \u2014 Systematic Task Roadmap & Actio
 mode: subagent
 color: "#4C9AFF"
 hidden: true
-model: google/gemini-3.7-flash
+model: nvidia/z-ai/glm-5.3-flash
 permission:
   edit:
     "*": deny

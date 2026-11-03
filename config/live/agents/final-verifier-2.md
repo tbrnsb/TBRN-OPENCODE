@@ -3,7 +3,7 @@ description: "TBRN's Final Verifier. Independent acceptance verifier. Checks the
 mode: subagent
 color: "#16A085"
 hidden: true
-model: opencode/glm-5.3-flash-free
+model: opencode-go/mimo-v2.6-flash
 permission:
   edit: deny
   bash: allow

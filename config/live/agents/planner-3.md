@@ -3,7 +3,7 @@ description: "TBRN's S.T.R.A.T.E.G.I.S.T. \u2014 Systematic Task Roadmap & Actio
 mode: subagent
 color: "#4C9AFF"
 hidden: true
-model: opencode/deepseek-v4.1-flash-free
+model: opencode-go/mimo-v2.6-pro
 permission:
   edit:
     "*": deny

@@ -10,7 +10,7 @@ agents, and from a user request through dispatch, failover, and logging.
 | :--- | :--- | :--- |
 | `chains.json` | `~/.config/opencode/chains.json` | Single source of truth: per-role model chains, the global `last_resort` list, and the model-family map. |
 | Generator | `scripts/gen-fallbacks.py` | Turns `chains.json` into one agent file per rung. Idempotent; `--check` detects drift. |
-| Rung agents | `~/.config/opencode/agents/*.md` | 56 generated agent files (11 roles x 4 rungs + 4 roles x 3 rungs). Never hand-edited. |
+| Rung agents | `~/.config/opencode/agents/*.md` | 55 generated agent files (10 roles x 4 rungs + 5 roles x 3 rungs). Never hand-edited. |
 | Mastermind | `agents/mastermind.md` (plus `-2`, `-3`, `-last`) | The only primary agent. Owns the workflow and dispatches one subagent at a time. |
 | `opencode.json` | `~/.config/opencode/opencode.json` | V2 config: `plugins`, provider routes, `agents.explore.disabled`, the mastermind's `permission.subagent` whitelist. |
 | Health registry | `lib/health.py` + `lib/model-health.json` | Tracks models in cooldown. `up` / `down` / `check`. |
@@ -36,7 +36,7 @@ The generator stamps each rung with its model, the `TBRN's <Role>`
 description, a hex role color, and `hidden: true` for every non-base rung.
 Mastermind rungs are `mode: primary`; everything else is `mode: subagent`.
 Rerunning the generator rewrites all outputs. `--check` compares the generated
-set against `chains.json` and reports "in sync: 56 agents" or the drift.
+set against `chains.json` and reports "in sync: 55 agents" or the drift.
 
 The repo's `config/live/` directory is the committed mirror of the installed
 state: the same `opencode.json`, `chains.json`, `AGENTS.md`, policy files, and

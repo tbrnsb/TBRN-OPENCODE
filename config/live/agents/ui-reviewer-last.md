@@ -3,7 +3,7 @@ description: "TBRN's UI Reviewer. Read-only UI reviewer. Checks screenshots and 
 mode: subagent
 color: "#8E44AD"
 hidden: true
-model: opencode/glm-5.3-flash-free
+model: opencode-go/minimax-m3
 permission:
   edit: deny
   bash: deny

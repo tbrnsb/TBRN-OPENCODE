@@ -32,7 +32,7 @@ One primary agent (**M.A.X.I.M.**) sizes every job and dispatches specialist sub
 - `<role>.md` (base), `<role>-2.md`, `<role>-3.md`, `<role>-last.md`
 - 3-rung roles (`security-reviewer`, `final-verifier`, `ui-reviewer`, `general`) have no `-3`
 
-**56 agents total**: 11 × 4 rungs + 4 × 3 rungs  
+**55 agents total**: 10 × 4 rungs + 5 × 3 rungs  
 **18 visible**: 15 base rungs + mastermind's 3 fallbacks (primary, switched with Tab)  
 **38 hidden**: dispatched by id only after the previous rung fails  
 Never hand-edit generated files — edit `chains.json` and re-run the generator.  
@@ -56,7 +56,7 @@ Generated agents live in `config/live/agents/` (source of truth for installer).
 | `agents.explore.disabled` | Disables built-in `explore`; `explorer` replaces it. |
 | `color: "#RRGGBB"` | Required by v2.2.0 on every agent; theme names dropped. |
 | `permission.subagent` | Mastermind whitelist (deny-first, last-match-wins). |
-| `chains.json` | Single source of truth for every role's model chain. |
+| `chains.json` | Single source of truth for every role's chain. 2026-11-04: `opencode-go/*` primary lane, free/external overflow, critic + code-reviewer family-separated. |
 
 ## Where Colors Appear
 
@@ -106,13 +106,13 @@ python3 -m unittest discover -s tests -t .
 opencode debug agents                    # 61 entries (56 TBRN + 5 builtins), no 'explore'
 opencode plugin list                     # agent-finished, session-archive, superpowers
 python3 ~/.config/opencode/scripts/gen-fallbacks.py --check
-# → "in sync: 56 agents match chains.json"
+# → "in sync: 55 agents match chains.json"
 ```
 
 ## Limitations
 
 - OpenCode 2.2.0's `@` autocomplete shows no description for agents (only skills). Marvel codenames appear in Tab picker and Task list, not in `@`.
-- `opencode-validate-pins` reports 56/56 "unlabelled" under the default public ceiling (exits 0).
+- `opencode-validate-pins` reports 55/55 "unlabelled" under the default public ceiling (exits 0).
 - The GO worker (`scripts/opencode-worker`, `lib/classify.sh`, `lib/policy.py`) is legacy and not the current routing layer.
 - 21 shell tests in `tests/` (not present in this repo) test the legacy worker.
 

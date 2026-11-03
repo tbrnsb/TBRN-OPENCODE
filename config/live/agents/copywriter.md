@@ -2,7 +2,7 @@
 description: "TBRN's I.N.K. \u2014 Information, Narrative, & Knowledge-Crafter. User-facing text: README, changelog, in-app strings. Edits text and doc files only."
 mode: subagent
 color: "#E67E22"
-model: opencode/mimo-v2.6-flash-free
+model: opencode-go/glm-5.3-flash
 permission:
   edit:
     "*": deny

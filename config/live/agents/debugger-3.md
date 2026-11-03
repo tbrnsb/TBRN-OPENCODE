@@ -3,7 +3,7 @@ description: "TBRN's P.A.T.C.H. \u2014 Programmatic Analyzer for Troubleshooting
 mode: subagent
 color: "#F39C12"
 hidden: true
-model: nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b
+model: opencode-go/longcat-2.0
 ---
 You are the DEBUGGER.
 

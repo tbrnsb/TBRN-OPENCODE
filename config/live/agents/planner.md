@@ -2,7 +2,7 @@
 description: "TBRN's S.T.R.A.T.E.G.I.S.T. \u2014 Systematic Task Roadmap & Action Tactician for Execution, Goals, Insights, & Sequenced Tracking. Read-only analyst. Reads the repo, writes PLAN.md (tasks, files, acceptance criteria, risks). Max 300-word report."
 mode: subagent
 color: "#4C9AFF"
-model: opencode/glm-5.3-flash-free
+model: opencode-go/glm-5.3-flash
 permission:
   edit:
     "*": deny

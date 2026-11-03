@@ -33,7 +33,7 @@ The interactive wizard provides a menu to:
 - **Add / Edit API Provider** — add NVIDIA, OpenRouter, Groq, Anthropic, Custom
 - **Set Session Archive Directory** — defaults to `~/.local/share/session-archive/sulav-global-sessions/`
 - **Validate Configuration** — checks V2 config, provider routes, chains
-- **Refresh Generated Agents** — regenerates 56 agents from `chains.json`
+- **Refresh Generated Agents** — regenerates 55 agents from `chains.json`
 - **View Current Provider Routes** — list configured providers with details
 - **Show Recommendations** — best model for each role (table)
 
@@ -78,7 +78,7 @@ Each route in `provider-routes.json` needs:
 opencode debug agents                    # 61 entries (56 TBRN + 5 builtins), no 'explore'
 opencode plugin list                     # session-archive, superpowers
 python3 ~/.config/opencode/scripts/gen-fallbacks.py --check
-# → "in sync: 56 agents match chains.json"
+# → "in sync: 55 agents match chains.json"
 ```
 
 ## Where Colors Appear
@@ -177,7 +177,7 @@ TBRN-OPENCODE/
 │   ├── orchestrator-policy.json   # Data-policy ceiling
 │   ├── provider-routes.example.json  # Sanitized template — copy + fill keys
 │   └── live/                      # Mirror used by installer
-│       ├── agents/                # 56 generated agents (source of truth)
+│       ├── agents/                # 55 generated agents (source of truth)
 │       ├── opencode.json
 │       ├── chains.json
 │       ├── AGENTS.md
@@ -211,15 +211,47 @@ TBRN-OPENCODE/
 └── install/install.sh             # Non-destructive installer
 ```
 
+## Model Lanes (OpenCode Go, 2026-11-04)
+
+Every role's first rungs are `opencode-go/*` models (the OpenCode Go quota
+pools); the last rung is a free or external overflow so a role still runs when
+a Go bucket is exhausted:
+
+| Lane | Models | Used for |
+|------|--------|----------|
+| Go primary | `opencode-go/deepseek-v4.1-flash`, `glm-5.3-flash`, `mimo-v2.6-flash`, `minimax-m3.1-flash`, `longcat-2.0`, `qwen3.8-flash` | rungs 1-3 of most roles |
+| Free / external overflow | `nvidia/*`, `groq/qwen/qwen3.8-27b`, `opencode/*-free` | last rung |
+| Paid safety nets | `mistral/codestral-2508`, `google/gemini-2.5-flash` | `last_resort` floor |
+
+**Family rule scope.** `critic` and `code-reviewer` must differ by family from
+every model in `author_models` (coder, debugger, takeovers) — their chains use
+nemotron, google, claude and mistral only. `security-reviewer` and
+`final-verifier` are exempt on purpose: they verify mechanically (re-run tests,
+scan the diff for secrets) rather than judge code the authors wrote, so they may
+reuse author families.
+
+The critic is chosen at runtime by `scripts/ladder.py --pick-critic STATE.md`,
+which walks the critic chain and refuses any rung whose family matches an
+author. If every rung matches, it escalates instead of reviewing.
+
 ## Regenerating Agents
 
 After editing `config/live/chains.json`:
 
 ```bash
-cd ~/.config/opencode
+cd ~/TBRN-OPENCODE     # the generator lives in the repo, not in the config dir
 python3 scripts/gen-fallbacks.py --out config/live/agents --chains config/live/chains.json
 python3 scripts/gen-fallbacks.py --check --out config/live/agents --chains config/live/chains.json
+
+# apply to the running config (no service restart needed for new sessions)
+cp config/live/chains.json ~/.config/opencode/chains.json
+python3 scripts/gen-fallbacks.py --out ~/.config/opencode/agents \
+    --chains ~/.config/opencode/chains.json
 ```
+
+Generated count: 10 four-rung roles + 5 three-rung roles = **55 agents**
+(archiver, security-reviewer, final-verifier, ui-reviewer and general are
+3-rung by design).
 
 ## Troubleshooting
 

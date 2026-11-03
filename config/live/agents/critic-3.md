@@ -3,7 +3,7 @@ description: "TBRN's J.U.D.G.E. \u2014 Justified Unit & Design Guardian Evaluato
 mode: subagent
 color: "#E74C3C"
 hidden: true
-model: opencode/deepseek-v4.1-flash-free
+model: opencode-go/claude-haiku-5-5
 permission:
   edit: deny
   bash: deny

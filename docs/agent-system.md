@@ -71,7 +71,7 @@ permission:
 ```
 
 The deny comes first; the 14 role ids and the rung globs follow. Last matching
-rule wins, so the mastermind can dispatch exactly the 56 generated agents and
+rule wins, so the mastermind can dispatch exactly the 55 generated agents and
 nothing else. Rung globs cover the hidden fallbacks without listing every id.
 
 ## Per-role permission boundaries
@@ -97,7 +97,7 @@ The TBRN `explorer` role replaces it, with its own chain and ladder behavior.
 
 1. Edit the role's chain or add a role in `chains.json`.
 2. Run `python3 scripts/gen-fallbacks.py` to regenerate all agents.
-3. Confirm with `--check` ("in sync: 56 agents") and the offline test suite
+3. Confirm with `--check` ("in sync: 55 agents") and the offline test suite
    (`python3 -m unittest discover -s tests -t .`), which covers generator
    drift, colors, hidden marking, and the dispatch whitelist.
 4. Update the mirror under `config/live/` so the repo matches the install.
