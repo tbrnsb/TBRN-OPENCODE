@@ -370,6 +370,18 @@ class LiveConfigTests(unittest.TestCase):
         first_rule = sub.split('"')[1] if '"' in sub else ""
         self.assertEqual(first_rule, "*")
 
+    def test_family_rule_prompts_match_scope(self):
+        # chains.json scopes the family rule to critic + code-reviewer. The
+        # exempt roles must not carry refuse-on-shared-family language, or
+        # final-verifier (all author families) could never verify anything.
+        for role in ("critic", "code-reviewer"):
+            text = (CONFIG_ROOT / "agents" / f"{role}.md").read_text()
+            self.assertIn("must not share a model family", text, role)
+        for role in ("security-reviewer", "final-verifier"):
+            text = (CONFIG_ROOT / "agents" / f"{role}.md").read_text()
+            self.assertNotIn("Refuse the", text, role)
+            self.assertIn("Family separation does NOT apply", text, role)
+
     def test_config_is_v2_native(self):
         config = json.loads((CONFIG_ROOT / "opencode.json").read_text())
         self.assertNotIn("plugin", config)

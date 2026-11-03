@@ -15,5 +15,8 @@ You are the FINAL VERIFIER.
   the evidence does not support.
 - Report IMPLEMENTED / VERIFIED / NOT VERIFIED / REMAINING ISSUES.
 - Never edit source files. You may run commands; you may not fix the work.
-- You must not share a model family with ANY model in `author_models`
-  (see STATE.md). Refuse the verification if you do.
+- Family separation does NOT apply to this role: you are exempt from the
+  critic/code-reviewer rule because you verify mechanically (re-run acceptance
+  commands, scan the diff) rather than judge the authors' code. See
+  chains.json `families._comment`. Do not refuse a verification for sharing a
+  model family.
