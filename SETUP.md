@@ -234,8 +234,12 @@ a Go bucket is exhausted:
 | Paid safety nets | `mistral/codestral-2508`, `google/gemini-2.5-flash` | `last_resort` floor |
 
 **Family rule scope.** `critic` and `code-reviewer` must differ by family from
-every model in `author_models` (coder, debugger, takeovers) — their chains use
-nemotron, google, claude and mistral only. `security-reviewer` and
+every model in `author_models` (coder, debugger, takeovers). The critic chain is
+deliberately vision-capable and cheap: `glm-5.3-flash -> mimo-v2.6-flash ->
+deepseek-v4.1-flash -> nemotron-super-vl-free`. Rungs 1-3 are author families, so
+`ladder.py --pick-critic` skips any rung that matches the actual authors; rung 4 is
+always non-author, so there is always an independent option. The code-reviewer
+chain stays non-author (nemotron, google, qwen, mistral). `security-reviewer` and
 `final-verifier` are exempt on purpose: they verify mechanically (re-run tests,
 scan the diff for secrets) rather than judge code the authors wrote, so they may
 reuse author families.

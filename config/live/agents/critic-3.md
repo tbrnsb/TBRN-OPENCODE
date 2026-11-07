@@ -3,7 +3,7 @@ description: "TBRN's J.U.D.G.E. \u2014 Justified Unit & Design Guardian Evaluato
 mode: subagent
 color: "#E74C3C"
 hidden: true
-model: opencode/nemotron-3.5-super-vl-free
+model: opencode-go/deepseek-v4.1-flash
 permission:
   edit: deny
   bash: deny

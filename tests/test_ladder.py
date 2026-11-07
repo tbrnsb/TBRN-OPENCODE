@@ -133,32 +133,32 @@ class PickCriticTests(unittest.TestCase):
                                str(path)], capture_output=True, text=True)
 
     def test_first_differing_rung_wins(self):
-        # critic now starts on claude haiku (vision-capable, non-author family);
-        # a deepseek author must not block it.
+        # critic starts on glm-5.3-flash (vision-capable); a deepseek author
+        # must not block it.
         got = self.pick("### author_models\n- opencode/deepseek-v4.1-flash-free\n")
         self.assertEqual(got.returncode, 0, got.stderr)
-        self.assertIn("claude-haiku-5-5", got.stdout)
+        self.assertIn("glm-5.3-flash", got.stdout)
         self.assertIn("[criticbase]", got.stdout)
 
     def test_skips_same_family_and_takes_the_next_rung(self):
         got = self.pick(
             "### author_models\n"
-            "- opencode/glm-5.3-flash-free\n"
-            "- opencode-go/claude-haiku-5-5\n")
+            "- opencode-go/glm-5.3-flash\n"
+            "- nvidia/nvidia/nemotron-3-ultra-550b-a55b\n")
         self.assertEqual(got.returncode, 0, got.stderr)
-        # claude (rung 1) refused; gemini (rung 2) is the first differing family.
+        # glm (rung 1) refused; mimo (rung 2) is the first differing family.
         self.assertIn("[critic-2]", got.stdout)
-        self.assertIn("gemini-3.8-flash", got.stdout)
+        self.assertIn("mimo-v2.6-flash", got.stdout)
         self.assertIn("SAME FAMILY", got.stdout)
 
     def test_all_rungs_same_family_escalates(self):
-        # One author per critic family: nemotron, google, claude, mistral.
+        # One author per critic family: glm, mimo, deepseek, nemotron.
         got = self.pick(
             "### author_models\n"
-            "- nvidia/nvidia/nemotron-3-ultra-550b-a55b\n"
-            "- google/gemini-3.8-flash\n"
-            "- opencode-go/claude-haiku-5-5\n"
-            "- mistral/codestral-2508\n")
+            "- opencode-go/glm-5.3-flash\n"
+            "- opencode-go/mimo-v2.6-flash\n"
+            "- opencode-go/deepseek-v4.1-flash\n"
+            "- nvidia/nvidia/nemotron-3-ultra-550b-a55b\n")
         self.assertEqual(got.returncode, 4)
         self.assertIn("escalate", got.stderr)
         self.assertEqual(got.stdout.count("refused"), 4)
@@ -177,7 +177,7 @@ class PickCriticTests(unittest.TestCase):
             "- mistral/codestral-2508\n\n"
             "## NEXT TURN\n\n### author_models\n- opencode/deepseek-v4.1-flash-free\n")
         self.assertEqual(got.returncode, 0, got.stderr)
-        self.assertIn("claude-haiku-5-5", got.stdout)
+        self.assertIn("glm-5.3-flash", got.stdout)
 
 
 class LadderRunTests(unittest.TestCase):

@@ -56,7 +56,7 @@ Generated agents live in `config/live/agents/` (source of truth for installer).
 | `agents.explore.disabled` | Disables built-in `explore`; `explorer` replaces it. |
 | `color: "#RRGGBB"` | Required by v2.2.0 on every agent; theme names dropped. |
 | `permission.subagent` | Mastermind whitelist (deny-first, last-match-wins). |
-| `chains.json` | Single source of truth for every role's chain. 2026-11-04: `opencode-go/*` primary lane, free/external overflow, critic + code-reviewer family-separated. |
+| `chains.json` | Single source of truth for every role's chain. `opencode-go/*` primary lane, free/external overflow. The critic chain is vision-capable (glm/mimo/deepseek + a free VL floor); `ladder.py --pick-critic` skips any rung whose family matches the actual author. |
 
 ## Where Colors Appear
 
