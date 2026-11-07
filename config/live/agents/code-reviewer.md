@@ -2,7 +2,7 @@
 description: "TBRN's G.U.A.R.D. \u2014 Git-level Unit & Architecture Refinement Directive. Independent code reviewer. Looks for regressions, accidental changes, architecture violations, unsafe behavior, missing requirements, and maintainability problems."
 mode: subagent
 color: "#C0392B"
-model: google/gemini-3.8-flash
+model: nvidia/nvidia/nemotron-3-ultra-550b-a55b
 permission:
   edit: deny
   bash: deny

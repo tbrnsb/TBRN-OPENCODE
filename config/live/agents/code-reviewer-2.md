@@ -3,7 +3,7 @@ description: "TBRN's G.U.A.R.D. \u2014 Git-level Unit & Architecture Refinement 
 mode: subagent
 color: "#C0392B"
 hidden: true
-model: nvidia/nvidia/nemotron-3-ultra-550b-a55b
+model: google/gemini-3.8-flash
 permission:
   edit: deny
   bash: deny

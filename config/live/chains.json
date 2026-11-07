@@ -14,6 +14,7 @@
       "opencode/nemotron-3-ultra-free",
       "opencode/nemotron-3.5-lightning-free",
       "opencode/nemotron-3.5-super-vl-free",
+      "nvidia/nvidia/nemotron-3.5-super-vl-120b-a12b",
       "nvidia/nvidia/nemotron-3.5-lightning-30b-a3b",
       "nvidia_secondary/nvidia/nemotron-3.5-lightning-30b-a3b"
     ]
@@ -78,12 +79,12 @@
       "label": "Critic",
       "mode": "subagent",
       "rungs": [
-        "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
-        "google/gemini-3.8-flash",
         "opencode-go/claude-haiku-5-5",
+        "google/gemini-3.8-flash",
+        "opencode/nemotron-3.5-super-vl-free",
         "mistral/codestral-2508"
       ],
-      "_flag": "2026-11-04: rebuilt for the family rule. Author families are deepseek/glm/mimo/qwen (coder) and minimax/glm/longcat (debugger). Critic uses nemotron, google, claude, mistral - zero overlap. The user's original glm/deepseek/mimo-pro ladder shared every author family, so it could not satisfy the rule."
+      "_flag": "2026-11-07: every rung can read images (the critic reviews screenshots). haiku -> gemini -> nemotron-super-vl-free -> codestral (text floor). All three vision rungs were tested with a real screenshot; the nvidia 120b variant answered without seeing the image, so the free opencode route is used. Families: claude, google, nemotron, mistral - zero overlap with coder (deepseek/glm/mimo/qwen) or debugger (minimax/glm/longcat)."
     },
     "designer": {
       "label": "Designer",
@@ -122,12 +123,12 @@
       "label": "Code Reviewer",
       "mode": "subagent",
       "rungs": [
-        "google/gemini-3.8-flash",
         "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
+        "google/gemini-3.8-flash",
         "opencode-go/claude-haiku-5-5",
         "mistral/codestral-2508"
       ],
-      "_flag": "2026-11-04: rebuilt for the family rule (same constraint as critic, different order). Gemini first for fast diff review; nemotron for depth."
+      "_flag": "2026-11-07: nemotron first (reliable, free, deep), gemini second (was flaky on 11-04: 503 then a >4min hang), haiku third, codestral floor."
     },
     "archiver": {
       "label": "Archiver + GitHub",

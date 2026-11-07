@@ -133,20 +133,20 @@ class PickCriticTests(unittest.TestCase):
                                str(path)], capture_output=True, text=True)
 
     def test_first_differing_rung_wins(self):
-        # critic now starts on nemotron (non-author family); a deepseek author
-        # must not block it.
+        # critic now starts on claude haiku (vision-capable, non-author family);
+        # a deepseek author must not block it.
         got = self.pick("### author_models\n- opencode/deepseek-v4.1-flash-free\n")
         self.assertEqual(got.returncode, 0, got.stderr)
-        self.assertIn("nemotron-3-ultra-550b-a55b", got.stdout)
+        self.assertIn("claude-haiku-5-5", got.stdout)
         self.assertIn("[criticbase]", got.stdout)
 
     def test_skips_same_family_and_takes_the_next_rung(self):
         got = self.pick(
             "### author_models\n"
             "- opencode/glm-5.3-flash-free\n"
-            "- nvidia_secondary/nvidia/nemotron-3-ultra-550b-a55b\n")
+            "- opencode-go/claude-haiku-5-5\n")
         self.assertEqual(got.returncode, 0, got.stderr)
-        # nemotron (rung 1) refused; gemini (rung 2) is the first free family.
+        # claude (rung 1) refused; gemini (rung 2) is the first differing family.
         self.assertIn("[critic-2]", got.stdout)
         self.assertIn("gemini-3.8-flash", got.stdout)
         self.assertIn("SAME FAMILY", got.stdout)
@@ -177,7 +177,7 @@ class PickCriticTests(unittest.TestCase):
             "- mistral/codestral-2508\n\n"
             "## NEXT TURN\n\n### author_models\n- opencode/deepseek-v4.1-flash-free\n")
         self.assertEqual(got.returncode, 0, got.stderr)
-        self.assertIn("nemotron-3-ultra-550b-a55b", got.stdout)
+        self.assertIn("claude-haiku-5-5", got.stdout)
 
 
 class LadderRunTests(unittest.TestCase):

@@ -2,7 +2,7 @@
 description: "TBRN's J.U.D.G.E. \u2014 Justified Unit & Design Guardian Evaluator. Read-only reviewer. Scores /10 on correctness, maintainability, consistency, security. Pass = 9. Max 3 rounds."
 mode: subagent
 color: "#E74C3C"
-model: nvidia/nvidia/nemotron-3-ultra-550b-a55b
+model: opencode-go/claude-haiku-5-5
 permission:
   edit: deny
   bash: deny
