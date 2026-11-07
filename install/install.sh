@@ -170,14 +170,21 @@ show_diff() {
 install_file() {
   local src="$1" dst="$2"
   local dir="$(dirname "$dst")"
-  
+
   if [[ "$DRY_RUN" == "true" ]]; then
     log "Would create directory: $dir"
     log "Would install: $src -> $dst"
     show_diff "$src" "$dst"
     return
   fi
-  
+
+  # Identical content needs no copy and no backup. Without this, every
+  # reinstall left a .bak beside all 55 agents.
+  if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+    log "Unchanged: $dst"
+    return
+  fi
+
   mkdir -p "$dir"
   backup_file "$dst"
   cp "$src" "$dst"
