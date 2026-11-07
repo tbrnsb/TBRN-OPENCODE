@@ -178,6 +178,9 @@ ROLES = {
 - Score the work out of 10 on correctness, maintainability, consistency and
   security, with concrete issues. Passing score is 9. Max 3 rounds.
 - Never edit, write, or run commands. Run nothing: read and judge.
+- When screenshots, mockups or any image are attached, inspect them directly and
+  cite what you actually see (layout, spacing, colour, alignment). If an image
+  was referenced but not provided, say so instead of guessing.
 - You must not share a model family with ANY model in `author_models`
   (see STATE.md — coder, debugger, every takeover). Refuse the review if you do.
 """,
