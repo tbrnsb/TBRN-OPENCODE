@@ -21,8 +21,9 @@ DB_DIR      = Path.home() / ".local" / "share" / "session-archive" / "sulav-glob
 PROVIDER_F  = CFG_DIR / "provider-routes.json"
 OPENCODE_J  = CFG_DIR / "opencode.json"
 CHAINS_F    = CFG_DIR / "chains.json"
-SAMPLE_F    = CFG_DIR / "config" / "provider-routes.example.json"
 REPO_ROOT   = Path(__file__).parent.parent
+SAMPLE_F    = CFG_DIR / "provider-routes.example.json"
+SAMPLE_FALLBACK = REPO_ROOT / "config" / "provider-routes.example.json"
 
 # ─── Role → Model Recommendations (the "secret sauce") ──────────────────
 # These are the BEST models for each role. The auto-mode will pick these.
@@ -227,6 +228,19 @@ def do_auto():
     
     # Save
     jsave(PROVIDER_F, {"version": 2, "api_routes": routes})
+
+    # Chains are the source of truth for what agents actually run. Without this
+    # step the routes were written and the chains kept pointing at whatever
+    # models the repo shipped with (the original bug).
+    existing = jload(CHAINS_F, {})
+    default_yes = not existing.get("roles")
+    q = ("\n  Write chains.json for all 15 roles with these providers?"
+         if default_yes else
+         "\n  Replace the models in your existing chains.json? (rung counts kept)")
+    if yn(q, d=default_yes):
+        write_chains(primary_key, secondary_key, existing)
+    else:
+        print("  Keeping existing chains.json — edit it by hand or re-run auto mode.")
     
     # Show what was configured
     print_box("CONFIGURED ROLES", [
@@ -273,6 +287,8 @@ def do_quick():
     })
     jsave(PROVIDER_F, r)
     print(f"\n  ✓ Added {pname}: {model}")
+    print("  ⚠ Quick Setup only adds a provider route — chains.json is unchanged.")
+    print("    Run Auto-Configure (menu 1) to point the 15 roles at your models.")
     do_validate(quiet=True)
     print("\n  Done! Run:  opencode")
 
@@ -348,7 +364,28 @@ def do_validate(quiet=False):
     
     c = jload(CHAINS_F)
     if not c.get("roles"): errs.append("chains.json: no roles")
-    elif not quiet: print(f"  ✓ {len(c['roles'])} roles")
+    else:
+        # Every rung must resolve to a model the machine knows: a route model
+        # or a catalog model from `opencode models`. Unknown IDs are warnings
+        # (the catalog can resolve models a routes file never lists).
+        known = {rt.get("model") for rt in r.get("api_routes", []) if rt.get("model")}
+        import subprocess
+        try:
+            out = subprocess.run(["opencode", "models"], capture_output=True,
+                                 text=True, timeout=25).stdout
+            known |= {ln.strip().split()[0] for ln in out.splitlines() if ln.strip()}
+        except Exception:
+            pass
+        unknown = []
+        for role, spec in c["roles"].items():
+            if len(spec.get("rungs", [])) not in (3, 4):
+                errs.append(f"chains.json: {role} has {len(spec.get('rungs', []))} rungs (need 3-4)")
+            for m in spec.get("rungs", []):
+                if known and m not in known:
+                    unknown.append(f"{role}: {m}")
+        if unknown:
+            warns.append(f"{len(unknown)} chain model(s) not found in catalog/routes")
+        if not quiet: print(f"  ✓ {len(c['roles'])} roles")
     
     if not (CFG_DIR/"model-health.json").exists(): warns.append("model-health.json missing (auto-created)")
     
@@ -364,10 +401,24 @@ def do_validate(quiet=False):
 def do_refresh():
     hr(); print("  REFRESH AGENTS"); hr()
     import subprocess
-    res = subprocess.run([sys.executable, "scripts/gen-fallbacks.py", "--check", "--out", "config/live/agents", "--chains", "config/live/chains.json"], cwd=REPO_ROOT, capture_output=True, text=True)
-    print(res.stdout.strip())
-    if res.returncode == 0: print("  ✓ 56 agents in sync"); return True
-    print("  ✗ failed"); return False
+    gen = str(REPO_ROOT / "scripts" / "gen-fallbacks.py")
+    run = subprocess.run(
+        [sys.executable, gen, "--out", str(CFG_DIR / "agents"),
+         "--chains", str(CHAINS_F)],
+        capture_output=True, text=True)
+    print(run.stdout.strip() or run.stderr.strip())
+    if run.returncode != 0:
+        print("  ✗ generation failed"); return False
+    chk = subprocess.run(
+        [sys.executable, gen, "--check", "--out", str(CFG_DIR / "agents"),
+         "--chains", str(CHAINS_F)],
+        capture_output=True, text=True)
+    print(chk.stdout.strip() or chk.stderr.strip())
+    if chk.returncode == 0:
+        n = len(list((CFG_DIR / "agents").glob("*.md")))
+        print(f"  ✓ {n} agents regenerated and in sync")
+        return True
+    print("  ✗ agents still out of sync"); return False
 
 def do_view():
     hr(); print("  PROVIDER ROUTES"); hr()
@@ -382,20 +433,95 @@ def do_view():
 
 def do_recommendations():
     """Show the model recommendations table."""
-    hr(); print("  MODEL RECOMMENDATIONS PER ROLE (2026-11-15)"); hr()
+    hr(); print("  MODEL RECOMMENDATIONS PER ROLE (2026-11-07)"); hr()
     print(f"  {'Role':<18} {'Provider':<12} {'Model':<40} Why")
     print("  " + "─"*80)
     for role, (prov, model, why) in ROLE_RECOMMENDATIONS.items():
         pname = PRESETS[prov][0] if prov in PRESETS else prov
         print(f"  {role:<18} {pname:<12} {model:<40} {why}")
     hr()
-    print("  These are used automatically in --auto mode.")
+    print("  These are used automatically in --auto mode.\n"
+          "  On OpenCode Go, use opencode-go/* models instead; see SETUP.md §Model Lanes.")
+
+# ─── CHAIN GENERATION ───────────────────────────────────────────────────
+# Roles that ship with 3 rungs; everything else gets 4. Used only when
+# chains.json does not exist yet, so an existing chain's shape is preserved.
+THREE_RUNG_ROLES = {"archiver", "security-reviewer", "final-verifier",
+                    "ui-reviewer", "general"}
+
+
+def _auto_pool(role, primary_key, secondary_key):
+    """Ordered model pool for one role: its recommendation first (when the
+    recommended provider is one of the chosen ones), then the secondary
+    provider's models, then the primary's. Duplicates removed."""
+    primary_models = [m for m, _ in PRESETS[primary_key][2]]
+    secondary_models = [m for m, _ in (PRESETS[secondary_key][2] if secondary_key else [])]
+    prov, model, _ = ROLE_RECOMMENDATIONS.get(
+        role, (primary_key, primary_models[0] if primary_models else "", ""))
+    first = model if prov in (primary_key, secondary_key) else (
+        primary_models[0] if primary_models else model)
+    pool = []
+    for m in [first] + secondary_models + primary_models:
+        if m and m not in pool:
+            pool.append(m)
+    while len(pool) < 4:
+        pool.append(pool[-1] if pool else "custom/model")
+    return pool
+
+
+def write_chains(primary_key, secondary_key, existing):
+    """Write chains.json for all 15 roles from the chosen providers.
+
+    Rung COUNTS from an existing chains.json are preserved (the user's rung
+    order is the source of truth); only the models are filled from the chosen
+    providers. A timestamped backup is written first.
+    """
+    import shutil, time as _time
+    roles = (existing or {}).get("roles", {})
+    out = {}
+    for role in ROLE_RECOMMENDATIONS:
+        n = len(roles.get(role, {}).get("rungs", []))
+        n = n if n in (3, 4) else (3 if role in THREE_RUNG_ROLES else 4)
+        pool = _auto_pool(role, primary_key, secondary_key)
+        out[role] = {
+            "label": roles.get(role, {}).get("label", role.replace("-", " ").title()),
+            "mode": "primary" if role == "mastermind" else "subagent",
+            "rungs": pool[:n],
+            "_flag": (f"setup-wizard {_time.strftime('%Y-%m-%d')}: auto-configured "
+                      f"for {primary_key}" + (f" + {secondary_key}" if secondary_key else "")),
+        }
+
+    flat = []
+    for spec in out.values():
+        for m in spec["rungs"]:
+            if m not in flat:
+                flat.append(m)
+    last_resort = (flat + flat + flat)[:3] if flat else []
+    chains = {
+        "_comment": ("Generated by setup-wizard from the chosen providers. "
+                     "Edit freely: chains.json is the single source of truth; "
+                     "re-run the generator after editing."),
+        "last_resort": last_resort,
+        "_last_resort_comment": "Ordered global floor after a role's own rungs.",
+        "families": (existing or {}).get("families", {}),
+        "roles": out,
+    }
+    if CHAINS_F.exists():
+        backup = CHAINS_F.with_name(
+            CHAINS_F.name + ".bak." + _time.strftime("%Y%m%d-%H%M%S"))
+        shutil.copy2(CHAINS_F, backup)
+        print(f"  ✓ Backed up chains.json → {backup.name}")
+    jsave(CHAINS_F, chains)
+    print(f"  ✓ Wrote chains.json ({len(out)} roles)")
 
 # ─── MAIN MENU ──────────────────────────────────────────────────────────
 def main_menu():
     ensure()
-    if not PROVIDER_F.exists() and SAMPLE_F.exists():
-        import shutil; shutil.copy2(SAMPLE_F, PROVIDER_F)
+    if not PROVIDER_F.exists():
+        src = SAMPLE_F if SAMPLE_F.exists() else SAMPLE_FALLBACK
+        if src.exists():
+            import shutil; shutil.copy2(src, PROVIDER_F)
+            print(f"  ✓ Created provider-routes.json from {src.name}")
         print("  ✓ Created provider-routes.json from template")
     
     while True:
@@ -405,7 +531,7 @@ def main_menu():
         print("  ➕ 3) Add Provider       (add NVIDIA, OpenRouter, Groq, Anthropic, Custom)")
         print("  📁 4) Session Archive    (change storage location)")
         print("  ✅ 5) Validate Config    (check everything works)")
-        print("  🔄 6) Refresh Agents     (regen 56 agents from chains.json)")
+        print("  🔄 6) Refresh Agents     (regenerate 55 agents from chains.json)")
         print("  👁  7) View Routes        (list configured providers)")
         print("  📋 8) Show Recommendations (best model for each role)")
         print("  🚪 9) Exit")

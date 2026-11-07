@@ -13,6 +13,16 @@ This installs:
 - `config/live/opencode.json` → `~/.config/opencode/opencode.json`
 - `config/live/chains.json` → `~/.config/opencode/chains.json`
 - `config/live/AGENTS.md` → `~/.config/opencode/AGENTS.md`
+- all 55 `config/live/agents/*.md` rungs
+- `plugins/*.js` → `~/.config/opencode/plugins/`
+- `lib/{health,log-rung,log-agent-issue,cc-alerts,ladder,gen-fallbacks}.py`,
+  `lib/secret-scan.sh` → `~/.config/opencode/lib/` (the paths AGENTS.md uses)
+- `opencode-ladder`, `opencode-gen-agents` wrappers → `~/.local/bin/`
+- `provider-routes.example.json` (a real `provider-routes.json` is never
+  overwritten; `--with-units` also installs/enables the cc-alerts timer)
+
+Installation self-checks: `gen-fallbacks --check` plus a ladder dry-run. If
+either fails, the installer exits non-zero.
 - `config/live/agents/*.md` (56 agents) → `~/.config/opencode/agents/`
 - Worker binaries → `~/.local/bin/`
 

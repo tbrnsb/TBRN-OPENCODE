@@ -1,12 +1,14 @@
 # Known Limitations
 
-## Current limitations (TBRN-OPENCODE-V2, OpenCode v2.2.0)
+## Current limitations (TBRN-OPENCODE-V2, OpenCode v2.2.5)
 
 1. OpenCode 2.2.0's @ autocomplete shows no description for agents, only
    skills. The "TBRN's <Role>" brand therefore appears in the Tab picker and
    the subagent list, not in `@`.
-2. `opencode-validate-pins` reports 55/55 agents "unlabelled" under the default
-   public pin ceiling, while exiting 0.
+2. `opencode-validate-pins` can only judge models that carry a data-policy
+   label in `provider-routes.json`. Models resolved from the OpenCode catalog
+   (`opencode-go/*`, `google/*`, …) are reported as `CATALOG` and are not
+   counted as violations — there is no label to compare against.
 3. The GO worker (`go/`, `scripts/opencode-worker`, `lib/classify.sh`,
    `lib/policy.py`) is legacy and pending removal. It is not the current
    routing layer.

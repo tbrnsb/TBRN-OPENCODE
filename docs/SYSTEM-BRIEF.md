@@ -151,17 +151,23 @@ suite.
 ## 12. Install
 
 `install/install.sh` installs `config/live/{opencode.json, chains.json,
-AGENTS.md, provider-routes.json, orchestrator-policy.json}` and every
-`config/live/agents/*.md` into `~/.config/opencode`, plus the worker binaries.
-Flags: `--dry-run`, `--force`, `--config-dir`.
+AGENTS.md, orchestrator-policy.json}` and every `config/live/agents/*.md` into
+`~/.config/opencode`, the plugins and their helper scripts, the agent runtime
+helpers (`lib/{health,log-rung,log-agent-issue,cc-alerts,ladder,gen-fallbacks}.py`,
+`lib/secret-scan.sh`) into `~/.config/opencode/lib`, plus the worker binaries and
+the `opencode-ladder` / `opencode-gen-agents` wrappers. It never overwrites an
+existing `provider-routes.json`, and its post-install check runs
+`gen-fallbacks --check` plus a ladder dry-run.
+Flags: `--dry-run`, `--force`, `--config-dir`, `--bin-dir`, `--with-units`.
 
 ## 13. Known limitations
 
 1. OpenCode 2.2.0's @ autocomplete shows no description for agents, only
    skills. The "TBRN's <Role>" brand therefore appears in the Tab picker and
    the subagent list, not in `@`.
-2. `opencode-validate-pins` reports 55/55 agents "unlabelled" under the default
-   public pin ceiling, while exiting 0.
+2. `opencode-validate-pins` can only judge models with a data-policy label in
+   `provider-routes.json`; catalog-resolved models are reported as `CATALOG`,
+   not as violations.
 3. The GO worker (`go/`, `scripts/opencode-worker`, `lib/classify.sh`,
    `lib/policy.py`) is legacy and pending removal. It is not the current
    routing layer.

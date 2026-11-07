@@ -1,0 +1,12 @@
+[Unit]
+Description=OpenCode failure/staleness detectors -> ntfy push (read-only)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.config/opencode/lib/cc-alerts.py
+# It must never be able to touch OpenCode state, even if the script is edited.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/state/cc-alerts
+NoNewPrivileges=true
+PrivateTmp=true

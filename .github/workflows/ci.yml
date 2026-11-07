@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Offline test suite
+        working-directory: .
+        env:
+          MODEL_HEALTH_FILE: ${{ runner.temp }}/health.json
+          RUNG_LOG_FILE: ${{ runner.temp }}/rung-log.jsonl
+        run: python3 -m unittest discover -s tests -t . -v
+
+      - name: Generated agents match chains.json
+        run: python3 scripts/gen-fallbacks.py --check --out config/live/agents --chains config/live/chains.json
+
+      - name: Installer syntax + dry run
+        run: |
+          bash -n install/install.sh
+          bash install/install.sh --dry-run --config-dir "$RUNNER_TEMP/cfg" --bin-dir "$RUNNER_TEMP/bin"

@@ -97,11 +97,20 @@ for name in sorted(names):
         findings.append((name, source))
         lines.append((name, "?", "(none)", "unlabelled", "UNPINNED"))
         continue
-    permitted = allowed_for(name)
-    verdict = "OK" if pin in permitted else "VIOLATION"
-    if verdict == "VIOLATION":
-        findings.append((name, pin))
-    pol = (api.get(pin) or {}).get("data_policy")
+    # A model that is not in provider-routes.json has no data-policy label
+    # (OpenCode resolves it from the model catalog instead). That is not a
+    # policy violation — it is unlabelled. Only route-known models can be
+    # judged against the ceiling; flagging catalog models made the tool report
+    # 55/55 violations on a healthy Go setup.
+    if pin not in api:
+        verdict = "CATALOG"
+        pol = None
+    else:
+        permitted = allowed_for(name)
+        verdict = "OK" if pin in permitted else "VIOLATION"
+        if verdict == "VIOLATION":
+            findings.append((name, pin))
+        pol = (api.get(pin) or {}).get("data_policy")
     lines.append((name, source, pin, pol or "unlabelled", verdict))
     d = (declared.get(name) or {}).get("model")
     if d and d != pin:
@@ -119,7 +128,12 @@ else:
     for name, mode, pin, pol, verdict in lines:
         print("  %-9s %-9s %-38s %-13s %s" % (verdict, mode, pin, pol, name))
     print()
-    print("  checked: %d   violations: %d" % (len(lines), len(findings)))
+    catalog = sum(1 for row in lines if row[4] == "CATALOG")
+    print("  checked: %d   violations: %d   catalog-unlabelled: %d"
+          % (len(lines), len(findings), catalog))
+    if catalog:
+        print("  CATALOG = resolved from the model catalog, not provider-routes.json;")
+        print("  no data-policy label exists for it, so it cannot be judged here.")
     if drift:
         print()
         for a, d, e in drift:

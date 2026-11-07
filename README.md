@@ -90,7 +90,9 @@ Agent `color: "#RRGGBB"` (in frontmatter) renders in:
 ./install/install.sh --force     # skip prompts
 ```
 
-Installs `config/live/{opencode.json,chains.json,AGENTS.md,orchestrator-policy.json}` + all `config/live/agents/*.md` into `~/.config/opencode`, plus worker binaries to `~/.local/bin`. `--config-dir` overrides target.
+Installs `config/live/{opencode.json,chains.json,AGENTS.md,orchestrator-policy.json}` + all `config/live/agents/*.md` into `~/.config/opencode`, the plugin helper scripts into `~/.local/bin`, the agent runtime helpers (health, log-rung, log-agent-issue, secret-scan, cc-alerts, ladder, generator) into `~/.config/opencode/lib`, and the `opencode-ladder` / `opencode-gen-agents` wrappers. `--with-units` also installs and enables the cc-alerts systemd timer. An existing `provider-routes.json` is **never** overwritten (the template lands beside it as `provider-routes.example.json`); `--config-dir` overrides the target.
+
+Post-install verification is real: it runs `gen-fallbacks --check` and a ladder dry-run, and fails loudly if either breaks.
 
 ## Tests
 
@@ -98,21 +100,21 @@ Installs `config/live/{opencode.json,chains.json,AGENTS.md,orchestrator-policy.j
 python3 -m unittest discover -s tests -t .
 ```
 
-35 offline tests: rung ladder, health registry, critic family selection, generator drift, agent colors, dispatch whitelist, V2 config shape. Temp health/log paths, no network, no model calls.
+36 offline tests: rung ladder, health registry, critic family selection, generator drift, agent colors, dispatch whitelist, V2 config shape. Temp health/log paths, no network, no model calls.
 
 ## Quick Verify
 
 ```bash
-opencode debug agents                    # 61 entries (56 TBRN + 5 builtins), no 'explore'
+opencode debug agents                    # 60 entries (55 TBRN + 5 builtins), no 'explore'
 opencode plugin list                     # agent-finished, session-archive, superpowers
-python3 ~/.config/opencode/scripts/gen-fallbacks.py --check
+opencode-gen-agents --check
 # → "in sync: 55 agents match chains.json"
 ```
 
 ## Limitations
 
 - OpenCode 2.2.0's `@` autocomplete shows no description for agents (only skills). Marvel codenames appear in Tab picker and Task list, not in `@`.
-- `opencode-validate-pins` reports 55/55 "unlabelled" under the default public ceiling (exits 0).
+- `opencode-validate-pins` distinguishes route-labelled models from catalog-resolved ones: catalog models are reported as `CATALOG` (unlabelled, not a violation), so only a genuine policy mismatch fails.
 - The GO worker (`scripts/opencode-worker`, `lib/classify.sh`, `lib/policy.py`) is legacy and not the current routing layer.
 - 21 shell tests in `tests/` (not present in this repo) test the legacy worker.
 

@@ -11,6 +11,7 @@ STATE_DIR="${REPO_ROOT}/.orchestrator/worker-state"
 
 DRY_RUN=false
 FORCE=false
+WITH_UNITS=false
 CONFIG_DIR_OVERRIDE=""
 BIN_DIR_OVERRIDE=""
 
@@ -25,12 +26,13 @@ OPTIONS:
   --force                Skip confirmation prompts (use with caution)
   --config-dir DIR       Target config directory (default: ~/.config/opencode)
   --bin-dir DIR          Target binary directory (default: ~/.local/bin)
+  --with-units           Install + enable the cc-alerts systemd user units
   -h, --help             Show this help
 
 EXAMPLES:
   $(basename "$0") --dry-run
   $(basename "$0") --config-dir /custom/path --bin-dir /custom/bin
-  $(basename "$0") --force
+  $(basename "$0") --with-units --force
 
 SAFETY:
   - Never overwrites files without explicit confirmation (unless --force)
@@ -51,6 +53,7 @@ while [[ $# -gt 0 ]]; do
     --force) FORCE=true; shift ;;
     --config-dir) CONFIG_DIR_OVERRIDE="$2"; shift 2 ;;
     --bin-dir) BIN_DIR_OVERRIDE="$2"; shift 2 ;;
+    --with-units) WITH_UNITS=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) err "Unknown option: $1" ;;
   esac
@@ -65,7 +68,7 @@ LIB_DIR="${LIB_DIR_OVERRIDE:-${BIN_DIR}/lib}"
 # Files to install
 declare -A FILES=(
   ["${REPO_ROOT}/config/live/opencode.json"]="${CONFIG_DIR}/opencode.json"
-  ["${REPO_ROOT}/config/live/provider-routes.json"]="${CONFIG_DIR}/provider-routes.json"
+  ["${REPO_ROOT}/config/provider-routes.example.json"]="${CONFIG_DIR}/provider-routes.example.json"
   ["${REPO_ROOT}/config/live/chains.json"]="${CONFIG_DIR}/chains.json"
   ["${REPO_ROOT}/config/live/AGENTS.md"]="${CONFIG_DIR}/AGENTS.md"
   ["${REPO_ROOT}/config/live/orchestrator-policy.json"]="${CONFIG_DIR}/orchestrator-policy.json"
@@ -98,8 +101,29 @@ for src in "${REPO_ROOT}"/plugins/*.js; do
 done
 shopt -u nullglob
 
+# Agent runtime helpers. AGENTS.md and the systemd unit reference these by
+# absolute path under ${CONFIG_DIR}/lib, so they must live there — not in the
+# worker's ${LIB_DIR}. ladder.py resolves health.py/log-rung.py relative to
+# its own parent, and gen-fallbacks.py defaults to ROOT/chains.json, so both
+# work unmodified once they sit in ${CONFIG_DIR}/lib.
+declare -A HELPER_FILES=(
+  ["${REPO_ROOT}/lib/health.py"]="${CONFIG_DIR}/lib/health.py"
+  ["${REPO_ROOT}/lib/log-rung.py"]="${CONFIG_DIR}/lib/log-rung.py"
+  ["${REPO_ROOT}/lib/log-agent-issue.py"]="${CONFIG_DIR}/lib/log-agent-issue.py"
+  ["${REPO_ROOT}/lib/secret-scan.sh"]="${CONFIG_DIR}/lib/secret-scan.sh"
+  ["${REPO_ROOT}/lib/cc-alerts.py"]="${CONFIG_DIR}/lib/cc-alerts.py"
+  ["${REPO_ROOT}/scripts/ladder.py"]="${CONFIG_DIR}/lib/ladder.py"
+  ["${REPO_ROOT}/scripts/gen-fallbacks.py"]="${CONFIG_DIR}/lib/gen-fallbacks.py"
+)
+
+declare -A UNIT_FILES=()
+if [[ "$WITH_UNITS" == "true" ]]; then
+  UNIT_FILES["${REPO_ROOT}/install/units/cc-alerts.service"]="${HOME}/.config/systemd/user/cc-alerts.service"
+  UNIT_FILES["${REPO_ROOT}/install/units/cc-alerts.timer"]="${HOME}/.config/systemd/user/cc-alerts.timer"
+fi
+
 # Check source files exist
-for src in "${!FILES[@]}"; do
+for src in "${!FILES[@]}" "${!HELPER_FILES[@]}" "${!UNIT_FILES[@]}"; do
   [[ -f "$src" ]] || err "Source file not found: $src"
 done
 
@@ -171,6 +195,31 @@ make_executable() {
   fi
 }
 
+# Write a small executable wrapper (used for the installed commands).
+write_wrapper() {
+  local dst="$1" body="$2"
+  if [[ "$DRY_RUN" == "true" ]]; then
+    log "Would write wrapper: $dst"
+    return
+  fi
+  mkdir -p "$(dirname "$dst")"
+  backup_file "$dst"
+  printf '#!/usr/bin/env bash\nset -euo pipefail\n%s\n' "$body" > "$dst"
+  chmod +x "$dst"
+  log "Wrote wrapper: $dst"
+}
+
+# Install only when absent: used for provider-routes.json so a reinstall can
+# never replace a real credential file with the sanitized template.
+install_once() {
+  local src="$1" dst="$2"
+  if [[ -e "$dst" ]]; then
+    log "Keeping existing: $dst"
+    return
+  fi
+  install_file "$src" "$dst"
+}
+
 # Main installation flow
 main() {
   log "OpenCode Global Orchestrator Installer"
@@ -183,7 +232,7 @@ main() {
   # Validate source JSON files
   log "Validating source JSON..."
   validate_json "${REPO_ROOT}/config/live/opencode.json"
-  validate_json "${REPO_ROOT}/config/live/provider-routes.json"
+  validate_json "${REPO_ROOT}/config/provider-routes.example.json"
   validate_json "${REPO_ROOT}/config/live/chains.json"
   validate_json "${REPO_ROOT}/config/live/orchestrator-policy.json"
   log "JSON validation passed"
@@ -199,6 +248,14 @@ main() {
     dst="${PLUGIN_FILES[$src]}"
     echo "  $src -> $dst"
   done
+  for src in "${!HELPER_FILES[@]}"; do
+    dst="${HELPER_FILES[$src]}"
+    echo "  $src -> $dst"
+  done
+  for src in "${!UNIT_FILES[@]}"; do
+    dst="${UNIT_FILES[$src]}"
+    echo "  $src -> $dst"
+  done
   echo
 
   # Confirmation
@@ -211,7 +268,8 @@ main() {
   # Install config files
   log "Installing configuration files..."
   install_file "${REPO_ROOT}/config/live/opencode.json" "${CONFIG_DIR}/opencode.json"
-  install_file "${REPO_ROOT}/config/live/provider-routes.json" "${CONFIG_DIR}/provider-routes.json"
+  install_file "${REPO_ROOT}/config/provider-routes.example.json" "${CONFIG_DIR}/provider-routes.example.json"
+  install_once "${REPO_ROOT}/config/provider-routes.example.json" "${CONFIG_DIR}/provider-routes.json"
   install_file "${REPO_ROOT}/config/live/chains.json" "${CONFIG_DIR}/chains.json"
   install_file "${REPO_ROOT}/config/live/AGENTS.md" "${CONFIG_DIR}/AGENTS.md"
   install_file "${REPO_ROOT}/config/live/orchestrator-policy.json" "${CONFIG_DIR}/orchestrator-policy.json"
@@ -256,6 +314,37 @@ main() {
   make_executable "${BIN_DIR}/agent-finished-notify.py"
   echo
 
+  # Agent runtime helpers referenced by AGENTS.md and the systemd unit.
+  log "Installing agent runtime helpers..."
+  for src in "${!HELPER_FILES[@]}"; do
+    install_file "$src" "${HELPER_FILES[$src]}"
+  done
+  make_executable "${CONFIG_DIR}/lib/health.py"
+  make_executable "${CONFIG_DIR}/lib/log-rung.py"
+  make_executable "${CONFIG_DIR}/lib/log-agent-issue.py"
+  make_executable "${CONFIG_DIR}/lib/secret-scan.sh"
+  make_executable "${CONFIG_DIR}/lib/cc-alerts.py"
+  echo
+
+  log "Installing command wrappers..."
+  write_wrapper "${BIN_DIR}/opencode-ladder" \
+    "exec python3 \"${CONFIG_DIR}/lib/ladder.py\" \"\$@\""
+  write_wrapper "${BIN_DIR}/opencode-gen-agents" \
+    "exec python3 \"${CONFIG_DIR}/lib/gen-fallbacks.py\" --out \"${CONFIG_DIR}/agents\" --chains \"${CONFIG_DIR}/chains.json\" \"\$@\""
+  echo
+
+  if [[ "$WITH_UNITS" == "true" ]]; then
+    log "Installing systemd user units..."
+    for src in "${!UNIT_FILES[@]}"; do
+      install_file "$src" "${UNIT_FILES[$src]}"
+    done
+    if [[ "$DRY_RUN" == "false" ]]; then
+      systemctl --user daemon-reload || warn "systemctl --user daemon-reload failed; enable the timer manually"
+      systemctl --user enable --now cc-alerts.timer || warn "could not enable cc-alerts.timer"
+    fi
+    echo
+  fi
+
   # V2 plugins — auto-loaded from ${CONFIG_DIR}/plugins/ at OpenCode startup.
   log "Installing V2 plugins..."
   for src in "${!PLUGIN_FILES[@]}"; do
@@ -274,12 +363,25 @@ main() {
       fi
     fi
   done
-  for src in "${!PLUGIN_FILES[@]}"; do
-    dst="${PLUGIN_FILES[$src]}"
+  for src in "${!PLUGIN_FILES[@]}" "${!HELPER_FILES[@]}" "${!UNIT_FILES[@]}"; do
+    if [[ -n "${PLUGIN_FILES[$src]:-}" ]]; then dst="${PLUGIN_FILES[$src]}"
+    elif [[ -n "${HELPER_FILES[$src]:-}" ]]; then dst="${HELPER_FILES[$src]}"
+    else dst="${UNIT_FILES[$src]}"; fi
     if [[ "$DRY_RUN" == "false" ]]; then
       [[ -f "$dst" ]] || err "Installation verification failed: $dst not found"
     fi
   done
+
+  if [[ "$DRY_RUN" == "false" ]]; then
+    log "Checking generated agents match chains.json..."
+    python3 "${CONFIG_DIR}/lib/gen-fallbacks.py" --check \
+      --out "${CONFIG_DIR}/agents" --chains "${CONFIG_DIR}/chains.json" \
+      || err "agents are out of sync with chains.json"
+    log "Checking the failure ladder can resolve a role..."
+    MODEL_HEALTH_FILE="$(mktemp)" RUNG_LOG_FILE="$(mktemp)" \
+      python3 "${CONFIG_DIR}/lib/ladder.py" --dry-run coder >/dev/null \
+      || err "ladder dry-run failed"
+  fi
   log "Installation verification passed"
   echo
 

@@ -3,7 +3,7 @@
   "plugins": [
     "superpowers@git+https://github.com/obra/superpowers.git#v7.0.1"
   ],
-  "model": "opencode/mimo-v2.6-flash-free",
+  "model": "opencode-go/deepseek-v4.1-flash",
   "provider": {
     "nvidia": {
       "npm": "@ai-sdk/openai-compatible",
@@ -56,11 +56,11 @@
         "chunkTimeout": 45000
       },
       "models": {
-        "codestral-latest": {
-          "name": "codestral-latest [mistral]"
-        },
         "mistral-large-latest": {
           "name": "mistral-large-latest [mistral]"
+        },
+        "codestral-2508": {
+          "name": "codestral-2508 [mistral]"
         }
       }
     },
@@ -85,6 +85,19 @@
   "agents": {
     "explore": {
       "disabled": true
+    }
+  },
+  "mcp": {
+    "playwright": {
+      "type": "local",
+      "command": [
+        "npx",
+        "@playwright/mcp@latest",
+        "--headless",
+        "--executable-path",
+        "/usr/bin/chromium"
+      ],
+      "enabled": true
     }
   }
 }
