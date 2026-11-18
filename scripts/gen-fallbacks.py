@@ -347,14 +347,18 @@ def desired_files(chains: dict) -> dict[str, str]:
     files: dict[str, str] = {}
     for role, spec in ROLES.items():
         rungs = chains["roles"][role]["rungs"]
-        if not 3 <= len(rungs) <= 4:
-            raise ValueError(f"{role}: need 3-4 rungs, got {len(rungs)}")
+        if not 1 <= len(rungs) <= 4:
+            raise ValueError(f"{role}: need 1-4 rungs, got {len(rungs)}")
         # Positional suffixes, but -last is always the final rung.
-        suffixes = (["", "-2", "-3", "-last"] if len(rungs) == 4
-                    else ["", "-2", "-last"])
+        suffixes = {
+            4: ["", "-2", "-3", "-last"],
+            3: ["", "-2", "-last"],
+            2: ["", "-last"],
+            1: [""],
+        }[len(rungs)]
         for i, model in enumerate(rungs):
             body = spec["prompt"]
-            if i == len(rungs) - 1:
+            if len(rungs) > 1 and i == len(rungs) - 1:
                 body += ("\nNOTE: you are the LAST RESORT rung. Your output will be "
                          "verified by the tester or critic before it is accepted. "
                          "Keep it small and checkable.\n")

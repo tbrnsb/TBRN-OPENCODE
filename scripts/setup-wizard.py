@@ -378,8 +378,8 @@ def do_validate(quiet=False):
             pass
         unknown = []
         for role, spec in c["roles"].items():
-            if len(spec.get("rungs", [])) not in (3, 4):
-                errs.append(f"chains.json: {role} has {len(spec.get('rungs', []))} rungs (need 3-4)")
+            if len(spec.get("rungs", [])) not in (1, 2, 3, 4):
+                errs.append(f"chains.json: {role} has {len(spec.get('rungs', []))} rungs (need 1-4)")
             for m in spec.get("rungs", []):
                 if known and m not in known:
                     unknown.append(f"{role}: {m}")
@@ -481,7 +481,7 @@ def write_chains(primary_key, secondary_key, existing):
     out = {}
     for role in ROLE_RECOMMENDATIONS:
         n = len(roles.get(role, {}).get("rungs", []))
-        n = n if n in (3, 4) else (3 if role in THREE_RUNG_ROLES else 4)
+        n = n if n in (1, 2, 3, 4) else (3 if role in THREE_RUNG_ROLES else 4)
         pool = _auto_pool(role, primary_key, secondary_key)
         out[role] = {
             "label": roles.get(role, {}).get("label", role.replace("-", " ").title()),
@@ -531,7 +531,7 @@ def main_menu():
         print("  ➕ 3) Add Provider       (add NVIDIA, OpenRouter, Groq, Anthropic, Custom)")
         print("  📁 4) Session Archive    (change storage location)")
         print("  ✅ 5) Validate Config    (check everything works)")
-        print("  🔄 6) Refresh Agents     (regenerate 55 agents from chains.json)")
+        print("  🔄 6) Refresh Agents     (regenerate 52 agents from chains.json)")
         print("  👁  7) View Routes        (list configured providers)")
         print("  📋 8) Show Recommendations (best model for each role)")
         print("  🚪 9) Exit")

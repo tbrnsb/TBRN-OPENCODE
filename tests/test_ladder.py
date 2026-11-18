@@ -45,8 +45,12 @@ class SuffixTests(unittest.TestCase):
     def test_three_rungs_has_no_dash3(self):
         self.assertEqual(ladder.suffixes_for(3), ["", "-2", "-last"])
 
+    def test_two_rungs_and_one_rung(self):
+        self.assertEqual(ladder.suffixes_for(2), ["", "-last"])
+        self.assertEqual(ladder.suffixes_for(1), [""])
+
     def test_other_counts_rejected(self):
-        for n in (0, 1, 2, 5, 6):
+        for n in (0, 5, 6):
             with self.assertRaises(ValueError):
                 ladder.suffixes_for(n)
 
@@ -195,12 +199,22 @@ class LadderRunTests(unittest.TestCase):
                               capture_output=True, text=True, env=self.env)
 
     def test_dry_run_four_rung_role(self):
-        got = self.run_ladder("--dry-run", "coder")
+        got = self.run_ladder("--dry-run", "planner")
         self.assertEqual(got.returncode, 0, got.stderr)
-        self.assertIn("[coder]", got.stdout)
+        self.assertIn("[planner]", got.stdout)
         self.assertIn("FAIL", got.stdout)
-        self.assertIn("[coder-2]", got.stdout)
-        self.assertNotIn("-3", got.stdout.split("[coder-2]")[0])
+        self.assertIn("[planner-2]", got.stdout)
+        self.assertNotIn("-3", got.stdout.split("[planner-2]")[0])
+
+    def test_dry_run_single_rung_coder(self):
+        # One rung: when it fails the ladder goes straight to last_resort and
+        # exits 3. There is no coder-2 / coder-last to fall back to.
+        got = self.run_ladder("--dry-run", "coder")
+        self.assertEqual(got.returncode, 3)
+        self.assertIn("[coder]", got.stdout)
+        self.assertIn("[last_resort-1]", got.stdout)
+        self.assertNotIn("[coder-2]", got.stdout)
+        self.assertNotIn("[coder-last]", got.stdout)
 
     def test_dry_run_three_rung_role(self):
         got = self.run_ladder("--dry-run", "general")
@@ -290,7 +304,7 @@ class GeneratorTests(unittest.TestCase):
 
     def test_drift_is_detected(self):
         self.gen("--out", str(self.tmp))
-        victim = self.tmp / "coder-2.md"
+        victim = self.tmp / "planner-2.md"
         victim.write_text(victim.read_text() + "\nhand-edited\n")
         got = self.gen("--check", "--out", str(self.tmp))
         self.assertEqual(got.returncode, 1)
@@ -337,8 +351,8 @@ class LiveConfigTests(unittest.TestCase):
     def test_generated_agents_have_colors(self):
         colors = gen_fallbacks.COLORS
         agents = sorted((CONFIG_ROOT / "agents").glob("*.md"))
-        # 10 four-rung roles + 5 three-rung roles = 55.
-        self.assertEqual(len(agents), 55)
+        # 9 four-rung + 5 three-rung + 1 single-rung (coder) = 52.
+        self.assertEqual(len(agents), 52)
         for p in agents:
             role = p.stem
             for suffix in ("-2", "-3", "-last"):

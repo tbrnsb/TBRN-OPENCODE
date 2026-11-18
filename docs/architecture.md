@@ -36,7 +36,7 @@ The generator stamps each rung with its model, the `TBRN's <Role>`
 description, a hex role color, and `hidden: true` for every non-base rung.
 Mastermind rungs are `mode: primary`; everything else is `mode: subagent`.
 Rerunning the generator rewrites all outputs. `--check` compares the generated
-set against `chains.json` and reports "in sync: 55 agents" or the drift.
+set against `chains.json` and reports "in sync: 52 agents" or the drift.
 
 The repo's `config/live/` directory is the committed mirror of the installed
 state: the same `opencode.json`, `chains.json`, `AGENTS.md`, policy files, and

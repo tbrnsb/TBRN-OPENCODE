@@ -28,11 +28,11 @@ One primary agent (**M.A.X.I.M.**) sizes every job and dispatches specialist sub
 
 ## Rungs & Visibility
 
-`chains.json` assigns 3 or 4 models per role. `scripts/gen-fallbacks.py` generates:
+`chains.json` assigns 1-4 models per role (the coder is deliberately single-rung). `scripts/gen-fallbacks.py` generates:
 - `<role>.md` (base), `<role>-2.md`, `<role>-3.md`, `<role>-last.md`
 - 3-rung roles (`security-reviewer`, `final-verifier`, `ui-reviewer`, `general`) have no `-3`
 
-**55 agents total**: 10 × 4 rungs + 5 × 3 rungs  
+**52 agents total**: 9 × 4 rungs + 5 × 3 rungs + 1 × 1 rung (coder)  
 **18 visible**: 15 base rungs + mastermind's 3 fallbacks (primary, switched with Tab)  
 **38 hidden**: dispatched by id only after the previous rung fails  
 Never hand-edit generated files — edit `chains.json` and re-run the generator.  
@@ -100,7 +100,7 @@ Post-install verification is real: it runs `gen-fallbacks --check` and a ladder 
 python3 -m unittest discover -s tests -t .
 ```
 
-36 offline tests: rung ladder, health registry, critic family selection, generator drift, agent colors, dispatch whitelist, V2 config shape. Temp health/log paths, no network, no model calls.
+38 offline tests: rung ladder, health registry, critic family selection, generator drift, agent colors, dispatch whitelist, V2 config shape. Temp health/log paths, no network, no model calls.
 
 ## Quick Verify
 
@@ -108,7 +108,7 @@ python3 -m unittest discover -s tests -t .
 opencode debug agents                    # 60 entries (55 TBRN + 5 builtins), no 'explore'
 opencode plugin list                     # agent-finished, session-archive, superpowers
 opencode-gen-agents --check
-# → "in sync: 55 agents match chains.json"
+# → "in sync: 52 agents match chains.json"
 ```
 
 ## Limitations
