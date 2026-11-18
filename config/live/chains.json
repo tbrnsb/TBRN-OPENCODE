@@ -35,12 +35,12 @@
       "label": "Analyst/Planner",
       "mode": "subagent",
       "rungs": [
-        "opencode-go/glm-5.3-flash",
         "opencode-go/deepseek-v4.1-flash",
+        "opencode-go/glm-5.3-flash",
         "opencode-go/mimo-v2.6-pro",
         "nvidia/z-ai/glm-5.3-flash"
       ],
-      "_flag": "2026-11-04: rung 3 was GLM-5.3; replaced with mimo-v2.6-pro so the ladder has three distinct families (glm, deepseek, mimo). NIM has no plain glm-5.3 - overflow uses glm-5.3-flash."
+      "_flag": "2026-11-18: deepseek moved to rung 1 (user cost/quality call); glm-flash second, mimo-pro third, NIM glm-flash overflow."
     },
     "coder": {
       "label": "Coder",
@@ -90,23 +90,23 @@
       "label": "Designer",
       "mode": "subagent",
       "rungs": [
-        "opencode-go/glm-5.3-flash",
         "opencode-go/deepseek-v4.1-flash",
+        "opencode-go/glm-5.3-flash",
         "opencode-go/mimo-v2.6-flash",
         "opencode/glm-5.3-flash-free"
       ],
-      "_flag": "2026-11-04: deepseek-v4.1-flash is treated as vision-capable per the user; all rungs remain image-capable. Free overflow is the real opencode/glm-5.3-flash-free ID."
+      "_flag": "2026-11-18: deepseek moved to rung 1 (vision-capable per user); glm-flash second, mimo third, free glm overflow. All rungs image-capable."
     },
     "copywriter": {
       "label": "Copywriter",
       "mode": "subagent",
       "rungs": [
+        "opencode-go/deepseek-v4.1-flash",
         "opencode-go/glm-5.3-flash",
         "opencode-go/mimo-v2.6-flash",
-        "opencode-go/deepseek-v4.1-flash",
         "google/gemini-3.8-flash"
       ],
-      "_flag": "2026-11-07b: haiku removed for cost; mimo-v2.6-flash takes rung 2. glm -> mimo -> deepseek -> gemini. There is no free Gemini 3.8 variant in the registry; google/gemini-3.8-flash is the proven route."
+      "_flag": "2026-11-18: deepseek moved to rung 1 (user call); glm-flash -> mimo -> gemini fallback. No free Gemini 3.8 variant exists; google/gemini-3.8-flash is the proven route."
     },
     "explorer": {
       "label": "Repository Explorer",

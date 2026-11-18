@@ -3,7 +3,7 @@ description: "TBRN's I.N.K. \u2014 Information, Narrative, & Knowledge-Crafter. 
 mode: subagent
 color: "#E67E22"
 hidden: true
-model: opencode-go/mimo-v2.6-flash
+model: opencode-go/glm-5.3-flash
 permission:
   edit:
     "*": deny
