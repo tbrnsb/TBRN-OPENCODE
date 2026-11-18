@@ -40,12 +40,12 @@ generates one agent file per rung (`<role>.md`, `<role>-2.md`, `<role>-3.md`,
 `<role>-last.md`) into `agents/`. A 3-rung role — `security-reviewer`,
 `final-verifier`, `ui-reviewer`, `general` — has no `-3` file.
 
-- 52 agents total: 9 roles x 4 rungs + 5 roles x 3 rungs + the coder x 1 rung.
+- 55 agents total: 10 roles x 4 rungs + 5 roles x 3 rungs.
 - 18 visible: the 15 base rungs plus the mastermind's `-2`, `-3`, `-last`.
 - 38 rung agents are `hidden: true`: out of the @ menu and the agent picker,
   dispatched by id only after the previous rung fails.
 - Generated files are never hand-edited. Edit `chains.json`, re-run the
-  generator. `gen-fallbacks.py --check` reports "in sync: 52 agents".
+  generator. `gen-fallbacks.py --check` reports "in sync: 55 agents".
 
 ## 4. Dispatch
 
@@ -140,7 +140,7 @@ tool output are not stored.
 python3 -m unittest discover -s tests -t .
 ```
 
-38 offline tests: ladder walk and exit codes, health-registry cooldowns,
+35 offline tests: ladder walk and exit codes, health-registry cooldowns,
 critic family selection, author_models parsing, generator drift and hidden
 marking, agent colors, the mastermind dispatch whitelist, and the V2 config
 shape. Tests write only to temp health/log paths (`MODEL_HEALTH_FILE`,

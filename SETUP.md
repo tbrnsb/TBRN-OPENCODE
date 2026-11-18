@@ -43,7 +43,7 @@ The interactive wizard provides a menu to:
 - **Add / Edit API Provider** — add NVIDIA, OpenRouter, Groq, Anthropic, Custom
 - **Set Session Archive Directory** — defaults to `~/.local/share/session-archive/sulav-global-sessions/`
 - **Validate Configuration** — checks V2 config, provider routes, chains
-- **Refresh Generated Agents** — regenerates 52 agents from `chains.json`
+- **Refresh Generated Agents** — regenerates 55 agents from `chains.json`
 - **View Current Provider Routes** — list configured providers with details
 - **Show Recommendations** — best model for each role (table)
 
@@ -88,7 +88,7 @@ Each route in `provider-routes.json` needs:
 opencode debug agents                    # 61 entries (56 TBRN + 5 builtins), no 'explore'
 opencode plugin list                     # session-archive, superpowers
 python3 ~/.config/opencode/scripts/gen-fallbacks.py --check
-# → "in sync: 52 agents match chains.json"
+# → "in sync: 55 agents match chains.json"
 ```
 
 ## Where Colors Appear
@@ -182,12 +182,12 @@ No GitHub Actions/workflows in this repo; the archiver runs at commit time.
 TBRN-OPENCODE/
 ├── config/
 │   ├── opencode.json              # V2 config (plugins, agents.explore.disabled)
-│   ├── chains.json                # 15 roles × 1-4 model rungs (source of truth)
+│   ├── chains.json                # 15 roles × 3-4 model rungs (source of truth)
 │   ├── AGENTS.md                  # Global operating rules
 │   ├── orchestrator-policy.json   # Data-policy ceiling
 │   ├── provider-routes.example.json  # Sanitized template — copy + fill keys
 │   └── live/                      # Mirror used by installer
-│       ├── agents/                # 52 generated agents (source of truth)
+│       ├── agents/                # 55 generated agents (source of truth)
 │       ├── opencode.json
 │       ├── chains.json
 │       ├── AGENTS.md
@@ -216,7 +216,7 @@ TBRN-OPENCODE/
 │   ├── session-archive.js         # → spawns lib/session-archive.py on terminal events
 │   └── agent-finished.js          # → spawns lib/agent-finished-notify.py for subagent notifications
 ├── skills/tbrn/                   # @tbrn skill + references
-├── tests/test_ladder.py           # 38 offline tests
+├── tests/test_ladder.py           # 35 offline tests
 ├── docs/                          # SYSTEM-BRIEF, architecture, etc.
 └── install/install.sh             # Non-destructive installer
 ```
@@ -263,10 +263,9 @@ python3 scripts/gen-fallbacks.py --out ~/.config/opencode/agents \
     --chains ~/.config/opencode/chains.json
 ```
 
-Generated count: 9 four-rung + 5 three-rung + 1 single-rung (coder) = **52 agents**
+Generated count: 10 four-rung roles + 5 three-rung roles = **55 agents**
 (archiver, security-reviewer, final-verifier, ui-reviewer and general are
-3-rung by design; the coder is 1-rung by user order — when it fails the global
-`last_resort` chain is the next step, there is no `coder-2`).
+3-rung by design).
 
 ## Troubleshooting
 

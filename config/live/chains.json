@@ -46,9 +46,12 @@
       "label": "Coder",
       "mode": "subagent",
       "rungs": [
-        "opencode-go/deepseek-v4.1-flash"
+        "opencode-go/deepseek-v4.1-flash",
+        "opencode-go/glm-5.3",
+        "opencode-go/mimo-v2.6-flash",
+        "opencode/deepseek-v4.1-flash-free"
       ],
-      "_flag": "2026-11-18: SINGLE RUNG by user order. The coder runs deepseek-v4.1-flash only - no coder-2/-3/-last files. If it fails, the global last_resort chain is the next step. The previous 4-rung ladder was removed after a coder-2/glm session consumed 535M tokens."
+      "_flag": "2026-11-18: rung 2 upgraded to full glm-5.3 (was glm-5.3-flash) per user request. deepseek -> glm-5.3 -> mimo -> opencode free deepseek."
     },
     "tester": {
       "label": "Tester",

@@ -36,20 +36,12 @@ SUFFIXES = ["", "-2", "-3", "-last"]
 
 
 def suffixes_for(count: int) -> list[str]:
-    """Rung file suffixes for a 1-4 rung role (last rung is always -last).
-
-    A one-rung role is legal on purpose: the coder runs one model and no
-    fallbacks. When it fails, the global last_resort chain is the next step.
-    """
+    """Rung file suffixes for a 3- or 4-rung role (last rung is always -last)."""
     if count == 4:
         return list(SUFFIXES)
     if count == 3:
         return ["", "-2", "-last"]
-    if count == 2:
-        return ["", "-last"]
-    if count == 1:
-        return [""]
-    raise ValueError(f"need 1-4 rungs, got {count}")
+    raise ValueError(f"need 3-4 rungs, got {count}")
 
 
 def load_chains() -> dict:
@@ -212,8 +204,8 @@ def main() -> int:
     role = args[0]
     cmd = args[2:] if len(args) > 1 and args[1] == "--" else []
     rungs = rung_names(role)
-    if len(rungs) not in (1, 2, 3, 4):
-        print(f"{role}: chains.json must list 1-4 rungs (got {len(rungs)})",
+    if len(rungs) not in (3, 4):
+        print(f"{role}: chains.json must list 3 or 4 rungs (got {len(rungs)})",
               file=sys.stderr)
         return 2
     suffixes = suffixes_for(len(rungs))
