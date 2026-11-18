@@ -47,11 +47,11 @@
       "mode": "subagent",
       "rungs": [
         "opencode-go/deepseek-v4.1-flash",
-        "opencode-go/glm-5.3-flash",
+        "opencode-go/glm-5.3",
         "opencode-go/mimo-v2.6-flash",
         "opencode/deepseek-v4.1-flash-free"
       ],
-      "_flag": "2026-11-04: deepseek -> glm -> mimo -> opencode free deepseek. Groq qwen was tried first and REJECTED with a live 400: the free tier caps input at 7000 ITPM while this system prompt is ~13.2K tokens, so every Groq request fails before the model sees it."
+      "_flag": "2026-11-18: rung 2 upgraded to full glm-5.3 (was glm-5.3-flash) per user request. deepseek -> glm-5.3 -> mimo -> opencode free deepseek."
     },
     "tester": {
       "label": "Tester",
