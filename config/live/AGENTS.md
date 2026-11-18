@@ -44,6 +44,17 @@ Work happens through roles defined in `agents/`. Each role has 3 or 4 rungs
 2. Completion criteria: a critic (subagent) score alone never marks work complete; require acceptance criteria + tests + static analysis + a clean diff review.
 3. Partial-failure recovery: before re-dispatching a role that failed mid-edit, inspect `STATE.md` and the working diff to avoid duplicate or conflicting changes; keep retries bounded.
 
+## Token budget (cost)
+
+- Cap one subagent dispatch at about **120 messages / 150K context**. At the cap,
+  return a checkpoint and re-dispatch with a fresh brief. A session that runs for
+  days re-reads its whole context on every step — that is what makes a model bill
+  explode.
+- Never dump a whole file or log into context. Use `grep`/`sed` ranges and
+  `| head`; a result that is 10x bigger is re-billed on every later step.
+- One task per session. When a job is done, start a new session instead of
+  continuing the old one.
+
 ## General
 
 Work from repository evidence rather than assumptions.
